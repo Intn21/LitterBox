@@ -1,0 +1,3 @@
+# Copy this folder to experiments/YYYY-MM-DD-short-slug/ and replace this file
+# with the FULLY RESOLVED config the run actually used — defaults merged in, no
+# references to files that will change on main.

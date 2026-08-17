@@ -1,0 +1,17 @@
+# Full sweep. The Milestone 0 exit criterion runs this against an external HF
+# model and checks the numbers against the published ones.
+eval:
+  suite: ruler
+  lengths: [4096, 8192, 16384, 32768, 65536, 131072]
+  tasks: [niah_single, niah_multikey, niah_multiquery, vt, cwe, qa]
+  samples_per_task: 100
+
+  thresholds:
+    effective_length: 0.85       # longest length still above 85% of the 4K score
+
+  profiling:
+    enabled: true                # prefill/decode latency, state bytes/token, peak mem
+
+  output:
+    json: results.json
+    plot: degradation-curve.png

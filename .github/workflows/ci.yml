@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uvx ruff check .
+      - run: uvx ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # CPU-only wheels: CI checks correctness, not speed. GPU-marked tests are
+      # deselected here and expected to be run locally on the target hardware.
+      - run: uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
+      - run: uv pip install --system -e ".[dev]"
+      - run: pytest -m "not gpu and not slow and not oracle"

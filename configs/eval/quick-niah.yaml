@@ -1,0 +1,11 @@
+# Fast smoke-test sweep. Runs in minutes; use it to catch a broken harness
+# before spending a long RULER run on it.
+eval:
+  suite: niah
+  lengths: [1024, 2048, 4096, 8192]
+  tasks:
+    - {type: niah_single, depths: [0.0, 0.5, 1.0], samples: 20}
+    - {type: niah_multikey, n_keys: 4, depths: [0.25, 0.75], samples: 20}
+  output:
+    json: results.json
+    plot: degradation-curve.png

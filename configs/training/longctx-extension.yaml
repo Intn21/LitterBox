@@ -1,0 +1,14 @@
+# Progressive length extension, applied on top of base.yaml.
+#
+# Each stage keeps tokens-per-batch roughly constant by halving batch size as
+# length doubles, so the optimizer sees a comparable signal throughout.
+defaults: [base]
+
+training:
+  stages:
+    - {seq_len: 2048,  batch_size: 32, steps: 10000, rope_scaling: none}
+    - {seq_len: 8192,  batch_size: 8,  steps: 4000,  rope_scaling: yarn}
+    - {seq_len: 32768, batch_size: 2,  steps: 2000,  rope_scaling: yarn}
+
+  optimizer:
+    lr: 2.0e-4                   # lower than pretraining; extension is fine-tuning

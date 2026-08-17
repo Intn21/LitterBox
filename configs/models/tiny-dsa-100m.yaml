@@ -1,0 +1,22 @@
+# DSA-style learned sparsity: a lightning indexer scores the cache, dense
+# attention runs over the top-k. Trained by conversion from a dense checkpoint
+# via the two-stage recipe in configs/training/dsa-conversion.yaml.
+model:
+  d_model: 768
+  n_layers: 12
+  vocab_size: 50304
+  max_seq_len: 32768
+  layer_pattern:
+    - mixer: dsa
+      heads: 12
+      kv_heads: 2
+      pos: rope
+      indexer:
+        heads: 4                 # few, cheap heads
+        head_dim: 64
+        activation: relu
+        rope_layout: interleaved # must match the main path — see design note
+      top_k: 2048
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true
