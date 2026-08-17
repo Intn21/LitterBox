@@ -1,0 +1,25 @@
+# Two-stage sparse-attention conversion from a dense checkpoint (Milestone 4).
+defaults: [base]
+
+training:
+  init_from: checkpoints/tiny-dense-100m/final.pt
+
+  stages:
+    # Stage 1 — model frozen, indexer learns to imitate dense attention.
+    - name: indexer-warmup
+      steps: 2000
+      freeze: [embeddings, blocks, lm_head]
+      trainable: [indexer]
+      loss: {type: kl_to_dense_attention, temperature: 1.0}
+      seq_len: 8192
+
+    # Stage 2 — everything trains, attention is sparse.
+    - name: joint-sparse
+      steps: 6000
+      freeze: []
+      loss: {type: cross_entropy}
+      seq_len: 32768
+      top_k: 2048
+
+  diagnostics:
+    indexer_recall: true         # fraction of dense attention mass in the top-k

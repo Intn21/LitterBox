@@ -1,0 +1,12 @@
+# Sliding-window-only variant. Expected to fail needle retrieval beyond its
+# window — that failure is the point, and it is half of Milestone 2's signature.
+model:
+  d_model: 768
+  n_layers: 12
+  vocab_size: 50304
+  max_seq_len: 8192
+  layer_pattern:
+    - {mixer: sliding_window, heads: 12, kv_heads: 12, window: 512, pos: rope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true

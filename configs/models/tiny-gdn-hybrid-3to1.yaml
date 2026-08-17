@@ -1,0 +1,19 @@
+# Gated DeltaNet 3:1 hybrid — the flagship ablation's centre point, run against
+# 7:1 and 1:1 siblings and a full-attention control at matched budget.
+#
+# Note `pos: nope` on the full-attention layer: the linear layers' decay already
+# carries position, so an explicit encoding there is redundant (Kimi Linear).
+# Per-layer `pos` is what makes that expressible without a code change.
+model:
+  d_model: 768
+  n_layers: 12
+  vocab_size: 50304
+  max_seq_len: 8192
+  layer_pattern:
+    - {mixer: gated_deltanet, heads: 12}
+    - {mixer: gated_deltanet, heads: 12}
+    - {mixer: gated_deltanet, heads: 12}
+    - {mixer: full_attention, heads: 12, kv_heads: 2, pos: nope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true

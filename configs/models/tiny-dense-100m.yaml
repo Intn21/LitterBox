@@ -1,0 +1,13 @@
+# Vanilla transformer baseline. Every other config is read as a diff against
+# this one, and Milestone 1's exit criterion is this model matching a nanoGPT
+# loss curve on identical data within noise.
+model:
+  d_model: 768
+  n_layers: 12
+  vocab_size: 50304          # padded to a multiple of 64
+  max_seq_len: 2048
+  layer_pattern:
+    - {mixer: full_attention, heads: 12, kv_heads: 12, pos: rope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true

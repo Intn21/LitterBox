@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Experiment artifacts — configs, notes, and results.json ARE tracked;
+# checkpoints, logs, and raw data are not.
+*.pt
+*.pth
+*.safetensors
+*.bin
+checkpoints/
+wandb/
+runs/
+outputs/
+data/
+!experiments/**/results.json
+!experiments/**/*.yaml
+!experiments/**/*.md
+
+# Local planning notes — the README is the public version of this
+context.md
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Notebooks
+.ipynb_checkpoints/
