@@ -37,6 +37,7 @@ dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.5",
     "ruff>=0.6",
+    "tiktoken>=0.7",
 ]
 eval = [
     "transformers>=4.44",
@@ -59,6 +60,14 @@ demo = [
 ]
 oracles = [
     "flash-linear-attention>=0.1",
+]
+
+# Tokenizers other people trained. All are optional and lazily imported:
+# `import litterbox.data.tokenizer` must not require transformers.
+tokenizers = [
+    "tiktoken>=0.7",
+    "transformers>=4.44",
+    "sentencepiece>=0.2",
 ]
 
 [project.urls]

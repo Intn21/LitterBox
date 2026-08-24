@@ -169,6 +169,9 @@ model code exists; every later claim depends on trusting the harness.
 
 [ROADMAP.md](ROADMAP.md) has the full version — what gets built at each
 milestone, the week ranges, and the attention pattern each one introduces.
+[DEFERRED.md](DEFERRED.md) is its counterpart: work deliberately *not* done
+yet, what triggers picking it up, and what was paid up front to keep the door
+open.
 
 ## Practices
 
