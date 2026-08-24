@@ -47,6 +47,16 @@ logging = [
     "wandb>=0.17",
     "tensorboard>=2.17",
 ]
+# The demo/ notebooks. `regex` is needed for GPT-2's pre-tokenization pattern
+# (`re` has no \p{L}); the rest power optional comparison cells that degrade to a
+# printed note when absent.
+demo = [
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "regex>=2024.5",
+    "tiktoken>=0.7",
+    "datasets>=2.20",
+]
 oracles = [
     "flash-linear-attention>=0.1",
 ]
@@ -76,3 +86,16 @@ extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+# Notebook cells are laid out for a reader — aligned assignments, single-line
+# prints whose output is the point. The formatter undoes both. Lint still runs
+# over them; only the reformatting is off.
+exclude = ["demo/**/*.ipynb"]
+
+[tool.ruff.lint.per-file-ignores]
+# Teaching notebooks are prose with code in it, not library code. Their print
+# statements are formatted for readable *output* and wrapping them to 100 columns
+# makes the source worse; `zip(strict=)` is noise in a cell written to be read
+# once. Correctness rules (F, UP) still apply.
+"demo/**/*.ipynb" = ["E501", "B905", "I001"]
