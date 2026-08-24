@@ -26,6 +26,7 @@ printed note instead of failing.
 | Notebook | Technique | Status |
 |---|---|---|
 | [tokenizers/bpe.ipynb](tokenizers/bpe.ipynb) | Byte-pair encoding — train, encode, decode | ✅ |
+| [data/preprocessing.ipynb](data/preprocessing.ipynb) | Text → sharded token files → batches, and the four silent failures along the way | ✅ |
 | `tokenizers/unigram.ipynb` | Unigram LM — the opposite direction: prune a huge vocab with EM | planned |
 | `mixers/full_attention.ipynb` | Causal attention, GQA, the KV cache | planned |
 | `mixers/sliding_window.ipynb` | Local attention and what it costs you | planned |
@@ -48,6 +49,13 @@ The shape that works, in order:
 6. **Exercises**, ending with the one that turns the notebook into a real
    implementation.
 
-Notebooks don't import from `litterbox`. The point is to build it in front of the
-reader; the packaged version is what you write *afterwards*, informed by having
-done it once by hand.
+Notebooks build from scratch rather than importing `litterbox`. The point is to
+put it in front of the reader; the packaged version is what you write
+*afterwards*, informed by having done it once by hand. A closing section may then
+show the packaged equivalent, once the reader has earned it — see the last
+section of the preprocessing notebook.
+
+Step 4 is the one that distinguishes these from documentation. Prefer traps that
+produce *plausible* wrong output over ones that raise: a silently wrapped token
+id or a target that leaks the answer teaches far more than an exception would,
+because those are the ones that survive into real runs.
