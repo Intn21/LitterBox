@@ -10,6 +10,22 @@ later, and — where it applies — what small cost was paid up front to keep th
 door open. That last column is the one that matters. A deferral is cheap when
 you've left a hook and expensive when you have to unpick a decision.
 
+## Keeping it honest
+
+This file is only worth having if it stays current. A stale list of deferrals is
+worse than none: it makes work look pending that already landed, and hides
+decisions taken since.
+
+So — **delete an entry when the work ships**, naming the commit in the message
+rather than leaving a tombstone here. And **add one whenever you consciously
+choose not to build something**, at the moment you make the call, while the
+reasoning is still in your head. An entry written weeks later is a guess about
+why past-you did something.
+
+Entries are also fair to *revise*. If a trigger fires and you decide to keep
+deferring, say so and say why — that is a different decision from the original
+one and worth recording as such.
+
 ---
 
 ## Data pipeline
