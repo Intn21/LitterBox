@@ -103,8 +103,10 @@ def main(big: bool = False) -> None:
         print(f"  {tok.decode(ds.read(0, 24).tolist())!r}")
         offsets = ds.document_offsets()
         if offsets is not None:
-            print(f"\n  {len(offsets):,} document offsets recorded "
-                  f"(first few: {offsets[:4].tolist()})")
+            print(
+                f"\n  {len(offsets):,} document offsets recorded "
+                f"(first few: {offsets[:4].tolist()})"
+            )
             print("  Unused for now — but needed for intra-document attention")
             print("  masking, and impossible to recover without repacking.")
 
