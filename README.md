@@ -79,6 +79,7 @@ src/litterbox/
   eval/           harness, tasks (niah, ruler, multihop), profiling, external
   utils/          config schema, logging
 tests/            the four non-negotiable test families
+demo/             one notebook per technique, built from scratch in the open
 experiments/      dated, self-contained records: config + hypothesis + result
 docs/             contributor guide and one design note per technique
 ```
@@ -94,6 +95,16 @@ Three structural choices worth calling out:
   insurance.
 - **`eval/external.py` loads arbitrary HF models.** That's how the harness gets
   validated before any model code exists.
+
+## Learning the techniques
+
+[`demo/`](demo/) holds a notebook per technique, each building the thing from
+scratch on inputs small enough to verify by hand, then scaling up to real data.
+They deliberately trigger the traps — the ones that produce plausible-looking
+wrong output rather than an error — so you've seen each failure fire before you
+meet it in your own code.
+
+Start with [byte-pair encoding](demo/tokenizers/bpe.ipynb).
 
 ## The core interface
 
@@ -155,6 +166,9 @@ met. That rule is the guardrail against the framework becoming the project.
 
 Milestone 0 comes first because it validates the measurement code before any
 model code exists; every later claim depends on trusting the harness.
+
+[ROADMAP.md](ROADMAP.md) has the full version — what gets built at each
+milestone, the week ranges, and the attention pattern each one introduces.
 
 ## Practices
 
