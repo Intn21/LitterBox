@@ -3,10 +3,11 @@
 A research sandbox for implementing, swapping, training, and benchmarking LLM
 architecture techniques end-to-end, with a focus on long-context token mixers.
 
-> **Status: scaffolding.** The structure, interfaces, and roadmap are in place;
-> the implementations are not. Every module below is a stub that raises
-> `NotImplementedError`. See [Roadmap](#roadmap) for the order things land in,
-> and [docs/adding-a-mixer.md](docs/adding-a-mixer.md) if you want to fill one in.
+> **Status: early.** Tokenizers and the data pipeline work — text goes in and
+> `[B, S]` batches come out. The model does not: 25 files under `src/` still
+> raise `NotImplementedError`. See [ROADMAP.md](ROADMAP.md) for the order things
+> land in, [DEFERRED.md](DEFERRED.md) for what is deliberately not being built
+> yet, and [docs/adding-a-mixer.md](docs/adding-a-mixer.md) to fill one in.
 
 ---
 
@@ -154,18 +155,24 @@ family.
 Each milestone has an exit criterion, and the next one doesn't start until it's
 met. That rule is the guardrail against the framework becoming the project.
 
-| # | Milestone | Exit criterion |
-|---|---|---|
-| 0 | Skeleton + eval harness on external models | Harness reproduces a published RULER/NIAH number for an existing small long-context model within a few points, emitting a degradation curve as plot + JSON |
-| 1 | Vanilla transformer trains correctly | Overfit-single-batch passes; ~100M model matches a nanoGPT loss curve within noise; causality test passes; KV-cache generation matches cache-free generation exactly |
-| 2 | First alternative mixer + first hybrid | Hybrid trains stably and the harness shows the expected signature: SWA-only fails NIAH past its window, hybrid recovers it |
-| 3 | Linear attention family (DeltaNet, GDN) | Numerical equivalence with `fla`; parallel/recurrent consistency passes; matched-budget ablation across 7:1 / 3:1 / 1:1 hybrids, written up in `experiments/` |
-| 4 | Learned sparsity: DSA-style mixer | Dense-trained model converted to sparse retains scores within a few points at target length, with measured attention-FLOPs reduction and an indexer-recall diagnostic |
-| 5 | MLA + open-source hardening | A stranger clones the repo, runs one command, and reproduces one experiment end-to-end |
-| 6+ | Frontier territory | CSA/HCA sequence compression, MSA block top-k, KDA, NSA, MoE in the MLP slot — by now each is "add a mixer, run the standard ablation" |
+The goal, stated as something testable: **a decoder-only transformer where
+swapping the token mixer is a config edit, and the new mixer trains and generates
+without touching anything else.** Everything not on that path is deferred.
 
-Milestone 0 comes first because it validates the measurement code before any
-model code exists; every later claim depends on trusting the harness.
+| Step | | Condition to move on |
+|---|---|---|
+| 0 | Tokenizer and data ✅ | A corpus packs; batches come out with targets shifted by one |
+| 1 | Wiring, one implementation per slot | A forward pass produces a loss equal to `ln(vocab_size)` |
+| 2 | It trains | Loss drops on TinyStories; output is vaguely English |
+| 3 | It generates | Cached generation matches cache-free exactly |
+| 4 | Prove the mixer seam | Dense, SWA, and a hybrid all train from unchanged code |
+| 5 | Prove the other seams | Nothing has exactly one implementation behind it |
+| 6 | Prove the state seam | Chunked parallel forward equals recurrent decode |
+
+Step 6 is the one that decides whether the interface is real — a linear mixer has
+no KV cache at all, which is what surfaces whether `MixerState` is secretly
+KV-shaped. After it, a new technique is one file plus a config, and the research
+milestones (eval harness, the DeltaNet family, DSA, MLA) begin.
 
 [ROADMAP.md](ROADMAP.md) has the full version — what gets built at each
 milestone, the week ranges, and the attention pattern each one introduces.
@@ -175,7 +182,7 @@ open.
 
 ## Practices
 
-**Testing discipline.** Four test families are non-negotiable from Milestone 1 —
+**Testing discipline.** Four test families are non-negotiable from step 1 —
 oracle equivalence, causality, state consistency, single-batch overfit. Cheap to
 write early, brutal to retrofit.
 
@@ -183,18 +190,23 @@ write early, brutal to retrofit.
 exact config, a one-paragraph hypothesis written *before* the run, and a
 conclusion written after.
 
-**Compute honesty.** Everything through Milestone 4 is single-GPU feasible at
-100M–350M scale on a 24–80GB card.
+**Compute honesty.** Everything through DSA is single-GPU feasible at 100M–350M
+scale on a 24–80GB card. Multi-GPU lives behind `train/distributed.py` and
+building it earlier is how the framework becomes the project.
 
 **Scope guardrail.** If a week goes by with no mixer implemented and no
-experiment run — only infrastructure — stop and ship the nearest milestone in its
+experiment run — only infrastructure — stop and ship the nearest step in its
 ugliest working form.
+
+**Measure before optimising.** Two bugs in the data pipeline were found by
+benchmarking and would not have been found by reasoning: a process pool that was
+a pessimisation, and a `.gitignore` pattern that silently excluded a package.
 
 ## Relationship to existing tools
 
 | Tool | Role here |
 |---|---|
-| nanoGPT / litGPT | Loss-curve oracle for Milestone 1; style reference for readability |
+| nanoGPT / litGPT | Loss-curve oracle for step 2; style reference for readability |
 | flash-linear-attention | Numerical oracle for the DeltaNet family; later, an optional fast-tier backend |
 | torchtitan / accelerate | Swap-in backend behind `train/distributed.py` |
 | RULER / LongBench v2 / HELMET | Wrapped by the eval harness, not reimplemented |

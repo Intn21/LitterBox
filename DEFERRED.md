@@ -48,8 +48,8 @@ loop exists yet, so building the data side against it would be guessing.
 **Insurance paid.** `get_batch(batch_size, step, ...)` already takes `step`. That
 is the only reason a schedule can hook in without touching a single caller.
 
-**Trigger.** Milestone 2, or the first time you want to train past the length you
-pretrained at.
+**Trigger.** The first time you want to train past the length you pretrained at
+— which in practice means after the goal in [ROADMAP.md](ROADMAP.md) is reached.
 
 **Cost later.** Low. `n_valid_positions` is derived from `seq_len` at
 construction, so either recompute it on change or accept `seq_len` per call.
@@ -91,7 +91,7 @@ resharding and mid-epoch resume is what Mosaic Streaming solves.
 measured cost — 37 µs to read a `B=32, S=1024` batch against tens of
 milliseconds for a forward+backward — reading is under 1% of a step.
 
-**Trigger.** Multi-node training. Same M5+ bracket as `train/distributed.py`.
+**Trigger.** Multi-node training. Same bracket as `train/distributed.py`.
 **Cost later.** Moderate, and self-contained behind `PackedDataset`'s interface.
 
 ---
@@ -156,7 +156,8 @@ An implementation was written and then **deliberately reverted** (`64e5658`,
 reverted by `a50c74b`) — building it is the practice this project exists for.
 The interface, the registry, and the configs stand; the bodies do not.
 
-**Trigger.** Now, in the order in ROADMAP.md.
+**Trigger.** Now. Steps 1 through 6 in [ROADMAP.md](ROADMAP.md), starting with
+`utils/config.py`.
 
 ### `positions` tensor instead of `pos_offset: int`
 
