@@ -25,7 +25,7 @@ checkpoints/
 wandb/
 runs/
 outputs/
-data/
+/data/                    # top-level corpora only — NOT src/litterbox/data/
 !experiments/**/results.json
 !experiments/**/*.yaml
 !experiments/**/*.md
