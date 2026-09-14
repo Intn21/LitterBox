@@ -65,7 +65,9 @@ Config → builder → backbone → blocks, with everything injected and exactly
 thing behind each compartment.
 
 - [ ] `utils/config.py` — OmegaConf merges, pydantic validates, strictly
-- [ ] `positional/rope.py` — both layouts, named and tested
+- [x] `positional/rope.py` — both layouts, named and tested, behind a
+      positional seam (`embed`/`rotate` hooks) that also holds sinusoidal
+      (fixed or learnable) and NoPE
 - [ ] `full_attention` — GQA plus RoPE
 - [ ] `block.py` — token mixer and channel mixer both injected, never constructed
 - [ ] `transformer.py` — embeddings, the stack, final norm, LM head
