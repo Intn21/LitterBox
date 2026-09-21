@@ -12,6 +12,9 @@ so training can move it. Starting from the sinusoid rather than noise means
 the learnable variant begins with a sensible notion of order instead of having
 to discover one — and whatever it drifts toward is measurable against where it
 started.
+
+Not to be confused with :class:`~litterbox.positional.learned.Learned`, GPT-2's
+scheme, whose table starts as small random noise with no order built in.
 """
 
 from __future__ import annotations

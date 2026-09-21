@@ -11,11 +11,13 @@ from litterbox.positional.base import (
     get_positional,
     register_positional,
 )
+from litterbox.positional.learned import Learned
 from litterbox.positional.nope import NoPE
 from litterbox.positional.rope import RoPE
 from litterbox.positional.sinusoidal import Sinusoidal
 
 __all__ = [
+    "Learned",
     "NoPE",
     "PositionalEncoding",
     "RoPE",

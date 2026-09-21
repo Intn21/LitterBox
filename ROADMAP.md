@@ -66,8 +66,8 @@ thing behind each compartment.
 
 - [ ] `utils/config.py` — OmegaConf merges, pydantic validates, strictly
 - [x] `positional/rope.py` — both layouts, named and tested, behind a
-      positional seam (`embed`/`rotate` hooks) that also holds sinusoidal
-      (fixed or learnable) and NoPE
+      positional seam (`embed`/`rotate` hooks) that also holds a GPT-2 style
+      learned table, sinusoidal (fixed or learnable), and NoPE
 - [ ] `full_attention` — GQA plus RoPE
 - [ ] `block.py` — token mixer and channel mixer both injected, never constructed
 - [ ] `transformer.py` — embeddings, the stack, final norm, LM head

@@ -74,7 +74,7 @@ configs/          model / training / eval configs — composition happens here
 src/litterbox/
   model/          backbone, block, mixer registry
   model/mixers/   reference/ (readable, correct) and fast/ (kernels, later)
-  positional/     rope, yarn, nope — layouts are explicit, named, and tested
+  positional/     learned, sinusoidal, rope, yarn, nope — behind one two-hook seam
   train/          single-GPU loop, data pipeline, distributed adapter
   infer/          generation and the cache/state types
   eval/           harness, tasks (niah, ruler, multihop), profiling, external

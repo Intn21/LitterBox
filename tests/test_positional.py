@@ -1,4 +1,4 @@
-"""Positional seam: uniform hooks, closed forms, and RoPE's invariants.
+"""Positional seam: uniform hooks, closed forms, learned tables, and RoPE's invariants.
 
 The RoPE tests check properties, not reference outputs: norms preserved,
 scores depending only on relative position, decode-time offsets matching the
@@ -13,6 +13,7 @@ import torch
 
 from litterbox.model.transformer import Transformer
 from litterbox.positional import (
+    Learned,
     NoPE,
     RoPE,
     Sinusoidal,
@@ -27,6 +28,7 @@ def strategies():
     return [
         Sinusoidal(D_MODEL, MAX_LEN),
         Sinusoidal(D_MODEL, MAX_LEN, learnable=True),
+        Learned(D_MODEL, MAX_LEN),
         RoPE(HEAD_DIM, MAX_LEN, layout="interleaved"),
         RoPE(HEAD_DIM, MAX_LEN, layout="half"),
         NoPE(),
@@ -49,8 +51,9 @@ def test_every_strategy_flows_through_both_hooks():
 
 
 def test_registry_round_trip():
-    assert set(available_positional()) >= {"sinusoidal", "rope", "nope"}
+    assert set(available_positional()) >= {"sinusoidal", "learned", "rope", "nope"}
     assert get_positional("rope") is RoPE
+    assert get_positional("learned") is Learned
     with pytest.raises(KeyError, match="available:"):
         get_positional("alibi")
 
@@ -89,6 +92,52 @@ def test_sinusoidal_offset_and_bounds():
     assert torch.equal(shifted[0], full[0, 10:14])
     with pytest.raises(ValueError, match="max_seq_len"):
         enc.embed(x, pos_offset=MAX_LEN - 2)
+
+
+# ------------------------------------------------------------------- learned
+
+
+def test_learned_is_a_random_trainable_table():
+    """GPT-2's scheme: every row is a parameter, and nothing about order is
+    built in — which is what separates it from Sinusoidal(learnable=True)."""
+    torch.manual_seed(0)
+    enc = Learned(D_MODEL, MAX_LEN)
+    assert sum(p.numel() for p in enc.parameters()) == MAX_LEN * D_MODEL
+    assert enc.table.requires_grad
+    # Small noise at the token-embedding scale, not a unit-scale sinusoid.
+    assert enc.table.std().item() == pytest.approx(0.02, rel=0.15)
+    assert not torch.allclose(enc.table.detach(), Sinusoidal(D_MODEL, MAX_LEN).table, atol=0.1)
+    loud = Learned(D_MODEL, MAX_LEN, init_std=0.5)
+    assert loud.table.std().item() == pytest.approx(0.5, rel=0.15)
+
+
+def test_learned_gradient_reaches_only_the_slots_used():
+    """The lookup is a slice, so its gradient is a scatter: a slot that no
+    token occupied gets exactly zero, the same property the token embedding
+    has for absent tokens."""
+    enc = Learned(D_MODEL, MAX_LEN)
+    enc.embed(torch.randn(3, 8, D_MODEL), pos_offset=4).sum().backward()
+    grad = enc.table.grad
+    assert torch.all(grad[:4] == 0) and torch.all(grad[12:] == 0)
+    # Each used row collects one unit of gradient per batch element.
+    assert torch.all(grad[4:12] == 3)
+
+
+def test_learned_offset_and_bounds():
+    enc = Learned(D_MODEL, MAX_LEN)
+    x = torch.zeros(1, 4, D_MODEL)
+    assert torch.equal(enc.embed(x, pos_offset=10)[0], enc.table[10:14])
+    with pytest.raises(ValueError, match="never trained"):
+        enc.embed(x, pos_offset=MAX_LEN - 2)
+
+
+def test_learned_needs_no_channel_pairing():
+    """Sinusoidal needs an even d_model to pair sin with cos; a plain table
+    has no such constraint."""
+    enc = Learned(7, MAX_LEN)
+    assert enc.embed(torch.zeros(1, 5, 7)).shape == (1, 5, 7)
+    with pytest.raises(ValueError, match="even"):
+        Sinusoidal(7, MAX_LEN)
 
 
 # ---------------------------------------------------------------------- rope
@@ -174,5 +223,6 @@ def test_backbone_takes_any_strategy():
 
     base = logits(None)
     assert not torch.allclose(logits(Sinusoidal(D_MODEL, MAX_LEN)), base)
+    assert not torch.allclose(logits(Learned(D_MODEL, MAX_LEN)), base)
     assert torch.equal(logits(RoPE(HEAD_DIM, MAX_LEN, layout="half")), base)
     assert torch.equal(logits(NoPE()), base)
