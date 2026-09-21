@@ -21,12 +21,12 @@ D_MODEL, HEADS, SEQ = 32, 4, 16
 
 def build(name):
     """One small instance of each mixer that has landed. Add a line per mixer."""
-    if name == "full_attention":
+    if name in ("full_attention", "full_attention_fast"):
         return get_mixer(name)(D_MODEL, HEADS, 2, pos=RoPE(D_MODEL // HEADS, 64, layout="half"))
     raise KeyError(name)
 
 
-LANDED = ["full_attention"]
+LANDED = ["full_attention", "full_attention_fast"]
 
 
 @pytest.mark.parametrize("name", LANDED)
