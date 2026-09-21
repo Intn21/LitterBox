@@ -195,6 +195,44 @@ def test_rope_decode_offset_matches_full_sequence(layout):
     assert torch.allclose(suffix, full[:, :, 11:], atol=1e-6)
 
 
+@pytest.mark.parametrize("cast", ["bfloat16", "half", "to_dtype"])
+def test_rope_tables_survive_a_model_wide_downcast(cast):
+    """``model.to(torch.bfloat16)`` must not take the angle tables with it.
+    bf16 cannot hold the cosine of a large angle, and the damage is silent:
+    nothing raises, scores just drift, and more so the longer the context."""
+    torch.manual_seed(0)
+    enc = RoPE(HEAD_DIM, 2048, layout="half")
+    reference = RoPE(HEAD_DIM, 2048, layout="half")
+    if cast == "bfloat16":
+        enc = enc.bfloat16()
+    elif cast == "half":
+        enc = enc.half()
+    else:
+        enc = enc.to(torch.bfloat16)
+
+    assert enc.cos.dtype == torch.float32 and enc.sin.dtype == torch.float32
+    assert torch.equal(enc.cos, reference.cos)
+
+    q, k = torch.randn(1, 2, 2048, HEAD_DIM), torch.randn(1, 2, 2048, HEAD_DIM)
+    (q1, k1), (q2, k2) = enc.rotate(q, k), reference.rotate(q, k)
+    assert torch.equal(q1, q2) and torch.equal(k1, k2)
+
+
+def test_rope_tables_still_follow_the_module_across_devices():
+    """The guard pins precision, not placement."""
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        pytest.skip("no accelerator on this machine")
+    enc = RoPE(HEAD_DIM, MAX_LEN, layout="half").to(device)
+    assert enc.cos.device.type == device and enc.cos.dtype == torch.float32
+    q = torch.randn(1, 2, 16, HEAD_DIM, device=device)
+    rotated, _ = enc.rotate(q, q.clone())
+    assert rotated.device.type == device
+
+
 def test_rope_rejects_misuse():
     with pytest.raises(ValueError, match="even"):
         RoPE(7, MAX_LEN, layout="half")

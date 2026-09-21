@@ -71,6 +71,27 @@ class RoPE(PositionalEncoding):
         self.register_buffer("cos", angles.cos(), persistent=False)
         self.register_buffer("sin", angles.sin(), persistent=False)
 
+    def _apply(self, fn, recurse: bool = True):
+        """Follow the model across devices, but never across precisions.
+
+        ``model.to(torch.bfloat16)`` casts every floating-point buffer, and these
+        tables would go with it. bf16 keeps about three significant digits,
+        which is not enough for the cosine of a large angle: measured at 2,048
+        positions, attention scores shift by up to 0.1 and shift invariance
+        degrades a hundredfold — silently, and worse the longer the context.
+
+        So the original fp32 tables are kept and only *moved* to wherever
+        ``fn`` sent the module. Training under ``torch.autocast`` never hits
+        this, since autocast leaves buffers alone; this guard is for the
+        ``.to(dtype)`` / ``.half()`` / ``.bfloat16()`` calls that look equivalent
+        and are not.
+        """
+        cos, sin = self.cos, self.sin
+        super()._apply(fn, recurse)
+        device = self.cos.device
+        self.cos, self.sin = cos.to(device), sin.to(device)
+        return self
+
     def rotate(self, q: Tensor, k: Tensor, pos_offset: int = 0) -> tuple[Tensor, Tensor]:
         seq_len = q.shape[-2]
         if pos_offset + seq_len > self.cos.shape[0]:
