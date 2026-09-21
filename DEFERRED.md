@@ -209,7 +209,7 @@ a sliding-window model and a 3:1 hybrid of the two train from one code path with
 only the YAML differing.
 
 An earlier full implementation was written and then **deliberately reverted**
-(`64e5658`, reverted by `a50c74b`) — building it is the practice this project
+(`31ad17a`, reverted by `ff7eb66`) — building it is the practice this project
 exists for.
 
 **Trigger.** Now. Step 5 in [ROADMAP.md](ROADMAP.md) — a second MLP and a second

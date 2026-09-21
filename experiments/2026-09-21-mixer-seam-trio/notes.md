@@ -4,7 +4,7 @@
 - **Config:** `config.yaml` — one training config, three model configs
 - **Hardware:** Apple M4, PyTorch MPS backend, unified memory. One run at a time.
 - **Versions:** PyTorch 2.13.0, Python 3.12.13, macOS 26.6. No Triton, no CUDA.
-- **Commit:** `9ed57d0`
+- **Commit:** `ef07094`
 
 ## Hypothesis
 
@@ -25,7 +25,7 @@ file, which did not exist yet:
 Falsified if the windowed model's validation loss is clearly worse than the dense
 model's — by more than a few hundredths — at equal steps.
 
-That comment was written before any run started and committed as `9ed57d0` while
+That comment was written before any run started and committed as `ef07094` while
 the first run was inside its first hundred steps, before any number existed.
 
 ## Setup

@@ -1,5 +1,5 @@
 {
-  "commit": "9ed57d0",
+  "commit": "ef07094",
   "hardware": "Apple M4, MPS backend",
   "torch": "2.13.0",
   "tokens_per_step": 16384,
