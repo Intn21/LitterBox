@@ -7,7 +7,7 @@ scratch to explain how it works. These scripts assume it works and show you the
 API. Reach for `demo/` to learn byte-pair encoding; reach for here to find out
 how to swap one tokenizer for another.
 
-Every script runs standalone with no arguments and no network:
+The first two run standalone with no arguments and no network:
 
 ```bash
 python examples/tokenizers.py
@@ -22,6 +22,7 @@ here requires the full dependency set.
 |---|---|
 | [tokenizers.py](tokenizers.py) | Building tokenizers from config, why special tokens are data rather than behaviour, comparing compression and segmentation, and registering an algorithm of your own |
 | [data_pipeline.py](data_pipeline.py) | Text to training batches: packing into shards, what the metadata sidecar is for, deterministic batching, and what reading actually costs. `--big` for a 200MB run |
+| [train_tinystories.py](train_tinystories.py) | The whole path end to end: pack TinyStories from a data config, assemble a small dense model, train it with the hand-written loop, and print a story at every evaluation. Needs the network once, to fetch the corpus. Resumes from its last checkpoint; picks CUDA, then Apple's GPU, then CPU |
 
 The performance figures these print are hardware-specific. Re-run them on the
 machine you actually train on — the serial-versus-parallel tradeoff in packing

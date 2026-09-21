@@ -7,6 +7,7 @@ registry is never something you have to debug.
 """
 
 from litterbox.model import mixers  # noqa: F401  (imported for its registrations)
+from litterbox.model.assemble import dense_transformer
 from litterbox.model.block import TransformerBlock, scale_residual_projections
 from litterbox.model.mixers.base import MixerState, TokenMixer
 from litterbox.model.mlp import SwiGLU
@@ -20,6 +21,7 @@ __all__ = [
     "TokenMixer",
     "TransformerBlock",
     "available_mixers",
+    "dense_transformer",
     "get_mixer",
     "register_mixer",
     "scale_residual_projections",

@@ -3,9 +3,12 @@
 A research sandbox for implementing, swapping, training, and benchmarking LLM
 architecture techniques end-to-end, with a focus on long-context token mixers.
 
-> **Status: early.** Tokenizers and the data pipeline work — text goes in and
-> `[B, S]` batches come out. The model does not: 25 files under `src/` still
-> raise `NotImplementedError`. See [ROADMAP.md](ROADMAP.md) for the order things
+> **Status: early, but it trains.** A dense decoder — RoPE, grouped-query
+> attention, SwiGLU, RMSNorm — is written out by hand, packs a corpus from a
+> data config, and trains on TinyStories with a hand-written loop
+> (`python examples/train_tinystories.py`). Generation with a KV cache, every
+> mixer other than full attention, and the eval harness are still stubs. See
+> [ROADMAP.md](ROADMAP.md) for the order things
 > land in, [DEFERRED.md](DEFERRED.md) for what is deliberately not being built
 > yet, and [docs/adding-a-mixer.md](docs/adding-a-mixer.md) to fill one in.
 

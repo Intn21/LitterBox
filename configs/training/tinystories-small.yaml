@@ -1,0 +1,52 @@
+# A small model on TinyStories — the first real run, sized for a laptop GPU.
+#
+#   python examples/train_tinystories.py
+#   python examples/train_tinystories.py training.max_steps=200 logging.out_dir=runs/smoke
+#
+# seq_len 256: the median story is 192 tokens and 81% fit whole (see
+# demo/data/datasets.ipynb), so a longer window would mostly hold unrelated
+# stories glued together. 16,384 tokens per step; 5,000 steps is 82M tokens,
+# about a sixth of the corpus.
+#
+# batch_size is the *micro*-batch — what is on the device at once — and it is
+# small because of the vocabulary, not the model. Logits are
+# batch x seq x 50,304 floats: at 64 x 256 that one tensor is 3.3 GB in fp32
+# before its gradient, which is more than a laptop GPU will give up. 16 x 4
+# accumulation steps is the same 16,384 tokens per optimizer step. On a CUDA
+# card with room, raise batch_size and lower grad_accum_steps to match.
+training:
+  seed: 1337
+  max_steps: 5000
+  batch_size: 16
+  grad_accum_steps: 4
+  seq_len: 256
+
+  optimizer:
+    type: adamw
+    lr: 1.0e-3            # small models take a higher peak than base.yaml's 6e-4
+    betas: [0.9, 0.95]
+    weight_decay: 0.1
+    grad_clip: 1.0
+
+  schedule:
+    type: cosine
+    warmup_steps: 200
+    min_lr_ratio: 0.1
+
+  precision:
+    dtype: bfloat16
+    grad_dtype: float32
+
+  device: auto            # cuda, then mps, then cpu
+  compile: false          # turn on for CUDA
+
+data:
+  config: configs/data/tinystories.yaml
+
+logging:
+  backend: jsonl
+  out_dir: runs/tinystories-small
+  log_every: 50
+  eval_every: 500
+  eval_batches: 20
+  checkpoint_every: 1000

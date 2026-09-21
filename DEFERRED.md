@@ -196,23 +196,25 @@ mask. Build it together with the SFT data path, not before.
 
 ### What is still a stub
 
-20 files under `src/litterbox/` are still entirely stubs: six of the seven
-mixers, the KV cache and generation, the training loop, config loading,
-logging, YaRN, and the whole eval harness. Three more have one stubbed entry
-point each — `FullAttention` with inference state, `build_block`, and
-`build_model` — all waiting on the cache or on config.
+18 files under `src/litterbox/` are still entirely stubs: six of the seven
+mixers, the KV cache, model config loading, logging backends, YaRN, the
+distributed adapter, and the whole eval harness. Five more have one stubbed
+entry point each — both tiers of `FullAttention` with inference state, cached
+`generate`, `build_block`, and `build_model` — all waiting on the cache or on
+config.
 
-What stands: the positional strategies, full attention's training path,
-RMSNorm, SwiGLU, the block, and the backbone. A model assembled by hand from
-those passes the step 1 exit condition.
+What stands: the positional strategies, full attention's training path in two
+tiers, RMSNorm, SwiGLU, the block, the backbone, data configs and packing, the
+training loop, and cache-free generation. A model assembled by hand from those
+trains on TinyStories and writes recognisable stories.
 
 An earlier full implementation was written and then **deliberately reverted**
 (`64e5658`, reverted by `a50c74b`) — building it is the practice this project
 exists for.
 
-**Trigger.** Now. Step 2 in [ROADMAP.md](ROADMAP.md), the training loop.
-Config loading was moved after it: a hand-assembled model trains without a
-builder, and a builder is easier to write once there is a loop to feed.
+**Trigger.** Now. Step 3 in [ROADMAP.md](ROADMAP.md): the KV cache and cached
+generation, with `generate_uncached` as the oracle it must match. Config loading
+follows it.
 
 ### `positions` tensor instead of `pos_offset: int`
 
@@ -224,6 +226,69 @@ each must restart at position 0. An int cannot express that.
 
 **Trigger.** An SFT path, or packed variable-length training.
 **Cost later.** Mechanical but wide — the signature change touches every mixer.
+
+---
+
+## Training
+
+### Untested on CUDA
+
+The loop was written for CUDA and has only ever run on Apple's GPU and the CPU,
+because that is the hardware it was written on. Three paths are therefore
+reasoned about rather than exercised: TF32 matmuls
+(`set_float32_matmul_precision("high")`), `training.compile`, and
+`PackedDataset`'s pinned-memory transfer.
+
+**Insurance paid.** Nothing names a device: tensors follow the model and the
+batch, and the model was run end to end on a non-CPU backend, which fails the
+same way CUDA does when a tensor is created on the wrong device. Checkpoints
+load through the CPU, so a run started on one kind of machine opens on another.
+RoPE's tables are pinned to fp32 through model-wide casts.
+
+**Trigger.** The first session on a CUDA machine. Run the suite, then
+`examples/train_tinystories.py training.compile=true` for a few hundred steps,
+and delete this entry.
+
+### A loss that does not materialise the logits
+
+Logits are `batch x seq x vocab` floats. With GPT-2's vocabulary that is 3.3 GB
+in fp32 at a micro-batch of 64 x 256 — before its gradient — and it, not the
+model, is what sets the largest micro-batch that fits. A laptop GPU tops out
+around 32 x 256 on a 17M-parameter model for this reason alone.
+
+**Why deferred.** Gradient accumulation already gives any tokens-per-step at a
+small micro-batch, which is what `tinystories-small.yaml` does. Computing the
+loss in chunks over the sequence (or a fused linear-cross-entropy kernel) removes
+the ceiling, but it is an optimisation of something that currently works.
+
+**Trigger.** A CUDA run where the micro-batch is limited by logits rather than
+by activations — visible as memory that scales with `vocab_size`, not `n_layers`.
+Or a tokenizer with a 128k+ vocabulary, where this gets 2.5x worse.
+**Cost later.** Low, and local to the loop's loss line.
+
+### fp16
+
+`training.precision.dtype` accepts `bfloat16` and `float32` only.
+
+**Why deferred.** fp16 has a narrow exponent range, so it needs a loss scaler,
+skipped steps on overflow, and care around every reduction. bf16 has fp32's range
+and needs none of that, and every GPU this project targets supports it.
+
+**Trigger.** Training on pre-Ampere NVIDIA hardware (V100, T4), which has fp16
+but not bf16.
+**Cost later.** Moderate: a `GradScaler` in the loop and a second look at each
+fp32 upcast.
+
+### Logging backends other than JSONL
+
+The loop writes `log.jsonl` and prints. `utils/logging.py` is still a stub, and
+`configs/training/base.yaml` mentions `wandb` and `tensorboard` in a comment.
+
+**Why deferred.** A JSON Lines file is greppable, diffable, plots in three lines,
+and has no account or daemon. It is also what an `experiments/` record wants.
+
+**Trigger.** Comparing more runs than is comfortable to overlay by hand.
+**Cost later.** Low — the loop calls one `record(entry)` function.
 
 ---
 

@@ -19,13 +19,13 @@ milestones after it are listed below, but they are not the plan until then.
 
 | | |
 |---|---|
-| ✅ Working | tokenizers, the data pipeline, four positional strategies, full attention, RMSNorm, SwiGLU, the block, the backbone — 142 real tests |
-| 🔨 Next | the training loop (step 2); config loading waits until after it |
-| ⬜ Stubs | 20 files under `src/` are still entirely stubs |
+| ✅ Working | tokenizers, data configs and packing, four positional strategies, full attention in two tiers, RMSNorm, SwiGLU, the block, the backbone, the training loop — 188 real tests |
+| 🔨 Next | generation with a KV cache (step 3), then config loading |
+| ⬜ Stubs | 18 files under `src/` are still entirely stubs |
 
-A hand-assembled dense model runs a forward pass, starts at `ln(vocab_size)`,
-leaks nothing from the future, and memorises a batch. Nothing trains it on real
-data yet.
+A dense model assembled by hand trains on TinyStories and writes recognisable
+children's stories. It cannot yet generate efficiently, and the only mixer is
+full attention.
 
 ---
 
@@ -95,13 +95,25 @@ The block must never learn what it is holding. The moment it grows an
 
 ### Step 2 — It trains
 
-- [ ] Single-GPU loop, written by hand rather than delegated
-- [ ] Consumes `PackedDataset`
-- [ ] Overfit-single-batch test passes
+- [x] Single-device loop, written by hand rather than delegated — AdamW with
+      decay groups, warmup and cosine decay, bf16 autocast, gradient
+      accumulation and clipping, JSONL logs, atomic checkpoints, exact resume
+- [x] Consumes `PackedDataset`, prepared from a data config on launch
+      (`configs/data/`, `litterbox-pack`)
+- [x] Overfit-single-batch test passes, for a hand-assembled model
+- [x] A fast attention tier (`full_attention_fast`), since the reference
+      mixer's explicit score matrix cannot train the 100M config
 
 > **Condition.** Loss drops on TinyStories and the output is vaguely English.
 > *Not* matching a nanoGPT curve — that is a rigor step for when you are making
 > claims, and it can eat a week.
+>
+> **Met.** `python examples/train_tinystories.py`: a 17M-parameter model, 600
+> steps (10M tokens, 17 minutes on an Apple GPU), loss 10.8 → 2.48 with
+> validation at 2.51, and it writes: *"Once upon a time, there was a little
+> girl named Lily. She loved to play outside with her toys…"*
+>
+> Not yet run on CUDA — see *Untested on CUDA* in [DEFERRED.md](DEFERRED.md).
 
 ### Step 3 — It generates
 
