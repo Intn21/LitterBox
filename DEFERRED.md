@@ -143,6 +143,53 @@ sequences, or a multi-byte character split across two tokens raises.
 **Trigger.** The first interactive generation demo.
 **Cost later.** Trivial, and local to the caller.
 
+### Chat templates
+
+Nothing turns a list of `{role, content}` messages into the single string a
+model actually sees. HuggingFace's answer is a good one and the plan is to adopt
+it as-is: a **Jinja2 template stored as one string** in the tokenizer's config
+(`chat_template` in `tokenizer_config.json`), rendered by
+`apply_chat_template`. The conversation format becomes data, so swapping ChatML
+for the Llama format is a config edit — the same idea as a mixer being a name
+in a `layer_pattern`.
+
+A template does not make a model able to chat. It is a contract: the model
+learns the format by being fine-tuned on text rendered through it, and
+inference must render with the identical template. That is why it belongs with
+the tokenizer rather than with generation — same reason a RoPE layout belongs
+with the weights.
+
+**Decided now, so it is not relitigated later.**
+
+- Jinja2, field-compatible with HuggingFace, so `HFTokenizer` can use whatever
+  template a Hub model ships with and ours can be loaded elsewhere.
+- Rendered in Jinja's `ImmutableSandboxedEnvironment`. A template is code, and
+  one downloaded from the Hub is untrusted code.
+- Role markers such as `<|im_start|>` must each be a single token, registered as
+  special tokens — otherwise the model reads them as ordinary text.
+- Assistant spans marked in the template (HF's `{% generation %}` block) so the
+  SFT loss mask falls out of rendering instead of being reverse-engineered from
+  the string.
+
+**Why deferred.** Pretraining has no roles; TinyStories is plain text and there
+is nothing to template. The only consumer is the SFT data path below, which is
+itself deferred. A render function with nothing downstream would go untested
+against real use.
+
+**Insurance paid.** The model configs pad `vocab_size` to 50304 for kernel
+alignment, and GPT-2's tokenizer uses 50257 ids. That leaves **47 embedding rows
+already allocated and unused** — enough for every role marker a chat format
+needs, with no embedding resize and no change to a pretrained checkpoint's
+shapes. They never receive gradient during pretraining (absent tokens get
+exactly zero), so they arrive at fine-tuning at their init values.
+
+**Trigger.** The first instruction-tuning run, or wanting to chat with a Hub
+model through `eval/external.py`.
+
+**Cost later.** Low — about fifty lines plus tests, and `jinja2` is already a
+transitive dependency of `transformers`. The one fiddly part is the assistant
+mask. Build it together with the SFT data path, not before.
+
 ---
 
 ## Model
@@ -227,6 +274,9 @@ also want to download a model over the network.
 
 Loss masking, per-example atomicity, padding or block-diagonal packing,
 `cu_seqlens`.
+
+The conversation format itself is settled — see *Chat templates* under
+Tokenizer. This entry is everything downstream of the rendered string.
 
 **Why deferred.** Genuinely different constraints from pretraining — an example
 is atomic, loss covers only the response, and lengths vary wildly. It shares
