@@ -1,8 +1,11 @@
 # Contributing to LitterBox
 
-The repo is early — most modules are stubs and the interfaces may still move.
-That makes it a good time to contribute a mixer and a bad time to build
-infrastructure on top of `TokenMixer` assuming it's frozen.
+The repo is early. The backbone, two attention mixers, training and generation
+work; the linear-attention family, DSA, MLA and the eval harness are stubs with
+their interfaces, configs and test slots already in place. `TokenMixer` has so
+far only held mixers with a KV cache, so it may still move when the first
+constant-state mixer lands. That makes it a good time to contribute a mixer and
+a bad time to build infrastructure assuming the interface is frozen.
 
 ## Setup
 
@@ -33,8 +36,10 @@ mixer is mergeable when:
    PyTorch. O(n²) is acceptable in the reference tier — clarity beats speed.
 2. It's registered with `@register_mixer("name")` and instantiable from a config
    with no code changes elsewhere.
-3. It implements `state_bytes_per_token` honestly, so profiling can treat it
-   uniformly.
+3. It implements `init_state`, so generation can ask for its inference state
+   without knowing what kind it is, and reports that state's cost honestly
+   (`state_bytes_per_token`, plus `state_bytes` if the state is bounded). There
+   is a test that compares the claim with measured bytes.
 4. It passes the four test families:
    - **oracle equivalence** — matches a trusted reference numerically
    - **causality** — perturbing token *t* leaves outputs at positions `< t`
@@ -42,7 +47,13 @@ mixer is mergeable when:
    - **state consistency** — parallel/chunked forward equals step-by-step
      recurrent decode (the DeltaNet family's most bug-prone property)
    - **single-batch overfit** — a config using it can memorize one batch
-5. It ships a `docs/design-notes/<name>.md` covering the math, the paper
+5. Its constructor takes named arguments only — no `**kwargs` — so a misspelled
+   config key raises instead of being swallowed.
+6. Its tests have been shown to fail. After they go green, break the
+   implementation in the ways this kind of code actually breaks — an off-by-one
+   mask, a wrong scale, state updated before it is read — and confirm each break
+   is caught. Say which you tried in the PR.
+7. It ships a `docs/design-notes/<name>.md` covering the math, the paper
    reference, and the gotchas you hit. The gotchas are the valuable part.
 
 A mixer without a design note is half a contribution — the notes are much of
