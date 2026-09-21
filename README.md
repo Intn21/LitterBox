@@ -6,8 +6,8 @@ architecture techniques end-to-end, with a focus on long-context token mixers.
 > **Status: early, but it trains.** A dense decoder — RoPE, grouped-query
 > attention, SwiGLU, RMSNorm — is written out by hand, packs a corpus from a
 > data config, and trains on TinyStories with a hand-written loop
-> (`python examples/train_tinystories.py`). Generation with a KV cache, every
-> mixer other than full attention, and the eval harness are still stubs. See
+> (`python examples/train_tinystories.py`), then generates from a KV cache. Every
+> mixer other than full attention, and the eval harness, are still stubs. See
 > [ROADMAP.md](ROADMAP.md) for the order things
 > land in, [DEFERRED.md](DEFERRED.md) for what is deliberately not being built
 > yet, and [docs/adding-a-mixer.md](docs/adding-a-mixer.md) to fill one in.

@@ -19,13 +19,13 @@ milestones after it are listed below, but they are not the plan until then.
 
 | | |
 |---|---|
-| ✅ Working | tokenizers, data configs and packing, four positional strategies, full attention in two tiers, RMSNorm, SwiGLU, the block, the backbone, the training loop — 188 real tests |
-| 🔨 Next | generation with a KV cache (step 3), then config loading |
-| ⬜ Stubs | 18 files under `src/` are still entirely stubs |
+| ✅ Working | tokenizers, data configs and packing, four positional strategies, full attention in two tiers, RMSNorm, SwiGLU, the block, the backbone, the training loop, the KV cache and cached generation — 218 real tests |
+| 🔨 Next | config loading, then a second mixer (step 4) |
+| ⬜ Stubs | 17 files under `src/` are still entirely stubs |
 
-A dense model assembled by hand trains on TinyStories and writes recognisable
-children's stories. It cannot yet generate efficiently, and the only mixer is
-full attention.
+A dense model assembled by hand trains on TinyStories, and generates from a KV
+cache exactly what it would generate without one. The only mixer is still full
+attention, so nothing has yet been *swapped*.
 
 ---
 
@@ -117,15 +117,25 @@ The block must never learn what it is holding. The moment it grows an
 
 ### Step 3 — It generates
 
-- [ ] KV cache in `infer/cache.py`
-- [ ] Greedy decode threading `MixerState`, advancing `pos_offset`
-- [ ] `init_state()` on the mixer, so generation never guesses what state is
+- [x] KV cache in `infer/cache.py` — preallocated, written once per token, read as
+      a view; sized by KV heads
+- [x] Generation threading `MixerState`, advancing `pos_offset`: one prefill pass
+      over the prompt, then one token of work per step
+- [x] `init_state()` on the mixer, so generation never guesses what state is
 
 Half of what distinguishes mixers is their *inference* path. A swap interface
 that only works at training time is not the thing being built.
 
 > **Condition.** Cached generation matches cache-free generation exactly, and
 > perturbing token *t* leaves every output at position `< t` bit-identical.
+>
+> **Met.** `tests/test_generation.py` holds `generate` to `generate_uncached`
+> token for token — greedy and sampled, MHA/GQA/MQA, both attention tiers, and
+> with additive positions — and `tests/test_state_consistency.py` checks a
+> parallel pass against step-by-step decode, including a multi-token chunk
+> appended to a non-empty cache. On the trained TinyStories checkpoint the two
+> generators agree exactly; the cache is 3.9x faster at 200 tokens on a CPU and
+> the gap grows with length.
 
 ### Step 4 — Prove the mixer seam
 

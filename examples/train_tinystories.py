@@ -26,7 +26,7 @@ import argparse
 
 import torch
 
-from litterbox.infer import generate_uncached
+from litterbox.infer import generate
 from litterbox.model import dense_transformer
 from litterbox.train import load_run_config, train
 
@@ -68,7 +68,7 @@ def main() -> None:
     def show_sample(step: int, model: torch.nn.Module) -> None:
         device = next(model.parameters()).device
         prompt = torch.tensor([tokenizer.encode(PROMPT)], device=device)
-        out = generate_uncached(
+        out = generate(
             model,
             prompt,
             max_new_tokens=80,

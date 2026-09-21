@@ -129,10 +129,42 @@ All three were mutation-checked when written: an off-by-one mask, the
 `sqrt(d_model)` scale, and `repeat` in place of `repeat_interleave` each fail
 the suite, and the last fails *only* the grouped-query cases.
 
-## Not done yet
+## Inference: the KV cache
 
-`state != None` raises. Incremental decode needs the KV cache from
-`infer/cache.py`, which is ROADMAP step 3. The forward is already arranged for
-it: keys are rotated at their true positions before being repeated, and
-`pos_offset` is threaded through. What step 3 adds is appending to the cache
-and widening the mask from `[s, s]` to `[s, past + s]`.
+Causality means a token's key and value never change once computed, so decode
+keeps them (`infer/cache.py`) and each step computes one query, key and value.
+The forward stays one code path: with no state the past is zero tokens long.
+
+- **Keys are cached already rotated, and per KV head.** Rotation happens before
+  `append`, because a token's position is fixed for good; and before
+  `repeat_interleave`, so the cache is `kv_heads` wide, which is the whole of
+  GQA's saving. Caching after the repeat would work and silently cost
+  `heads / kv_heads` times the memory; the cache refuses a tensor of that shape.
+- **The mask is a shifted triangle.** Query `i` sits at absolute position
+  `past + i`, so it may see key `j <= past + i`: `tril(diagonal=past)` on an
+  `[s, past + s]` matrix. Training is `past = 0`, the familiar square. Decoding
+  one token is a single all-True row. The case in between — several tokens
+  appended to a non-empty cache — is the one that is easy to forget and has its
+  own test.
+- **`is_causal=True` is only right for a square.** The fused kernel's flag means
+  "lower triangle aligned top-left". Used while decoding one token it lets that
+  token see only the *first* key. The fast tier therefore has three cases:
+  `is_causal` for an empty cache, no mask at all for one token, and an explicit
+  mask for a chunk onto a non-empty cache.
+- **`pos_offset` must equal the cache length**, and the mixer checks. Decoding a
+  lone token at the default `pos_offset=0` turns its query as if it opened the
+  document; nothing crashes, the attention pattern is just wrong. For a
+  full-attention cache slot `j` holds position `j`, so the mismatch is detectable
+  and is raised.
+- **A cache cannot slide.** Its keys were rotated at absolute positions, so
+  dropping the oldest and carrying on would need every remaining key re-rotated.
+  `generate` refuses a request that does not fit; `generate_uncached` slides,
+  because it recomputes everything anyway.
+
+**What the cache buys, measured.** On the 17M TinyStories model, one sequence:
+on a CPU, 2.2x at 50 new tokens and 3.9x at 200, growing with length because
+cache-free throughput falls while cached throughput is flat. On an Apple GPU it
+is *slower* at 50 tokens and 1.4x at 200: with a model this small and a batch of
+one, a decode step is bound by kernel-launch latency, not arithmetic, and the
+cache only removes arithmetic. The cache is about FLOPs and memory traffic;
+whether that is your bottleneck depends on model size and batch.

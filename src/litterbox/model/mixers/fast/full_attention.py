@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import torch
 import torch.nn.functional as F
 
 from litterbox.model.mixers.reference.full_attention import FullAttention
@@ -42,23 +43,33 @@ class FastFullAttention(FullAttention):
         state: MixerState | None = None,
         pos_offset: int = 0,
     ) -> tuple[Tensor, MixerState | None]:
-        if state is not None:
-            raise NotImplementedError(
-                "Incremental decode needs the KV cache from infer/cache.py (ROADMAP step 3). "
-                "The training path, state=None, is complete."
-            )
         b, s, _ = x.shape
+        past = self._past_length(state, pos_offset)
         q = self.q_proj(x).view(b, s, self.heads, self.head_dim).transpose(1, 2)  # [b, h,  s, d]
         k = self.k_proj(x).view(b, s, self.kv_heads, self.head_dim).transpose(1, 2)  # [b, kv, s, d]
         v = self.v_proj(x).view(b, s, self.kv_heads, self.head_dim).transpose(1, 2)  # [b, kv, s, d]
         q, k = self.pos.rotate(q, k, pos_offset)
+        if state is not None:
+            k, v = state.kv.append(k, v)  # [b, kv, past + s, d]
 
         # Steps 3-7 of the reference, in one kernel: share KV heads across query
         # groups (enable_gqa uses the same interleaved grouping), score, scale by
         # sqrt(head_dim), mask causally, softmax, and average the values.
+        #
+        # The kernel's is_causal flag means "lower triangle aligned top-left",
+        # which is only the right mask when queries and keys cover the same
+        # positions. So there are three cases, and only the rare one builds a mask:
+        if past == 0:
+            mask, causal = None, True  # training, or prefill into an empty cache
+        elif s == 1:
+            mask, causal = None, False  # decoding one token: the whole cache is its past
+        else:
+            # a chunk appended to a non-empty cache: the triangle is shifted right
+            mask = torch.ones(s, past + s, dtype=torch.bool, device=x.device).tril(diagonal=past)
+            causal = False
         out = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True, enable_gqa=self.group_size > 1
+            q, k, v, attn_mask=mask, is_causal=causal, enable_gqa=self.group_size > 1
         )  # [b, h, s, d]
 
         out = out.transpose(1, 2).reshape(b, s, self.heads * self.head_dim)
-        return self.o_proj(out), None
+        return self.o_proj(out), state

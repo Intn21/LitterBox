@@ -196,25 +196,23 @@ mask. Build it together with the SFT data path, not before.
 
 ### What is still a stub
 
-18 files under `src/litterbox/` are still entirely stubs: six of the seven
-mixers, the KV cache, model config loading, logging backends, YaRN, the
-distributed adapter, and the whole eval harness. Five more have one stubbed
-entry point each — both tiers of `FullAttention` with inference state, cached
-`generate`, `build_block`, and `build_model` — all waiting on the cache or on
-config.
+17 files under `src/litterbox/` are still entirely stubs: six of the seven
+mixers, model config loading, logging backends, YaRN, the distributed adapter,
+and the whole eval harness. Two more have one stubbed entry point each —
+`build_block` and `build_model` — both waiting on config.
 
-What stands: the positional strategies, full attention's training path in two
-tiers, RMSNorm, SwiGLU, the block, the backbone, data configs and packing, the
-training loop, and cache-free generation. A model assembled by hand from those
-trains on TinyStories and writes recognisable stories.
+What stands: the positional strategies, full attention in two tiers with its
+inference path, RMSNorm, SwiGLU, the block, the backbone, data configs and
+packing, the training loop, the KV cache, and cached generation. A model
+assembled by hand from those trains on TinyStories and generates from a cache
+exactly what it generates without one.
 
 An earlier full implementation was written and then **deliberately reverted**
 (`64e5658`, reverted by `a50c74b`) — building it is the practice this project
 exists for.
 
-**Trigger.** Now. Step 3 in [ROADMAP.md](ROADMAP.md): the KV cache and cached
-generation, with `generate_uncached` as the oracle it must match. Config loading
-follows it.
+**Trigger.** Now. Config loading, then step 4 in [ROADMAP.md](ROADMAP.md): a
+second mixer, which is the first time anything is actually swapped.
 
 ### `positions` tensor instead of `pos_offset: int`
 

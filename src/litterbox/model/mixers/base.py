@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
@@ -66,6 +67,22 @@ class TokenMixer(nn.Module, ABC):
         parallel call must equal stepping through it one token at a time with
         state (parallel/recurrent consistency).
         """
+
+    def init_state(
+        self,
+        batch_size: int,
+        max_len: int,
+        *,
+        dtype: torch.dtype = torch.float32,
+        device: torch.device | str | None = None,
+    ) -> MixerState:
+        """An empty inference state sized for this mixer.
+
+        Generation asks the mixer rather than guessing: full attention answers
+        with a KV cache of ``max_len`` slots, a linear mixer with a fixed-size
+        matrix that ignores ``max_len`` entirely. The caller never learns which.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement inference state yet")
 
     @property
     @abstractmethod

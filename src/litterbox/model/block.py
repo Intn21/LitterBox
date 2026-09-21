@@ -90,6 +90,11 @@ class TransformerBlock(nn.Module):
         x = x + self.mlp(self.mlp_norm(x))
         return x, state
 
+    def init_state(self, batch_size: int, max_len: int, **kwargs) -> MixerState:
+        """The mixer's empty inference state. The block adds nothing to it — the
+        norms and the MLP are per-token, so there is nothing else to remember."""
+        return self.mixer.init_state(batch_size, max_len, **kwargs)
+
 
 def scale_residual_projections(blocks: Iterable[nn.Module], *, base_std: float = 0.02) -> int:
     """Re-initialise every residual branch's output projection for the stack's depth.

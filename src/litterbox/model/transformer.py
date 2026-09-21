@@ -26,6 +26,7 @@ from collections.abc import Sequence
 import torch.nn as nn
 from torch import Tensor
 
+from litterbox.model.mixers.base import MixerState
 from litterbox.positional import PositionalEncoding
 
 
@@ -83,19 +84,48 @@ class Transformer(nn.Module):
             # embedding's storage.
             self.lm_head.weight = self.tok_emb.weight
 
-    def forward(self, ids: Tensor) -> Tensor:
+    def forward(
+        self,
+        ids: Tensor,
+        states: list[MixerState | None] | None = None,
+        pos_offset: int = 0,
+    ) -> Tensor:
         """Map token ids ``[batch, seq]`` (int64) to logits ``[batch, seq, vocab]``.
 
-        Training-mode only for now: no state threading, no ``pos_offset``.
-        Incremental decode arrives with the KV cache in Step 3.
+        Args:
+            states: one inference state per block, from :meth:`init_states`, or
+                ``None`` when training. The list is **updated in place** — each
+                block's returned state is written back to its slot — so the
+                return value stays a plain logits tensor in both modes.
+            pos_offset: absolute position of ``ids[:, 0]``. Zero for a full
+                sequence; when decoding, the number of tokens already processed.
+                Reaches both positional hooks: ``embed`` here, ``rotate`` inside
+                each attention layer.
         """
+        if states is not None and len(states) != len(self.blocks):
+            raise ValueError(f"got {len(states)} states for {len(self.blocks)} blocks")
         x = self.tok_emb(ids)
         if self.pos is not None:
-            x = self.pos.embed(x)
-        for block in self.blocks:
-            x, _ = block(x)
+            x = self.pos.embed(x, pos_offset)
+        for i, block in enumerate(self.blocks):
+            x, new_state = block(x, None if states is None else states[i], pos_offset)
+            if states is not None:
+                states[i] = new_state
         x = self.final_norm(x)
         return self.lm_head(x)
+
+    def init_states(self, batch_size: int, max_len: int) -> list[MixerState]:
+        """One empty inference state per block, on this model's device and dtype.
+
+        Each block answers for itself, so a hybrid's list can hold a KV cache in
+        one slot and a recurrent matrix in the next without this method, or
+        anything that uses it, knowing the difference.
+        """
+        ref = self.tok_emb.weight
+        return [
+            block.init_state(batch_size, max_len, dtype=ref.dtype, device=ref.device)
+            for block in self.blocks
+        ]
 
     @property
     def n_params(self) -> int:

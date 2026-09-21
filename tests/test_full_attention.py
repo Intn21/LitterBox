@@ -8,7 +8,7 @@ bookkeeping, the positional seam, and the ways construction should refuse.
 import pytest
 import torch
 
-from litterbox.model import available_mixers, get_mixer
+from litterbox.model import MixerState, available_mixers, get_mixer
 from litterbox.model.mixers.reference.full_attention import FullAttention
 from litterbox.positional import Learned, NoPE, RoPE
 
@@ -120,7 +120,6 @@ def test_rejects_misuse():
     wrong = FullAttention(D_MODEL, HEADS, pos=RoPE(HEAD_DIM * 2, 64, layout="half"))
     with pytest.raises(ValueError, match="per head"):
         wrong(torch.randn(1, SEQ, D_MODEL))
-    with pytest.raises(NotImplementedError, match="step 3"):
-        from litterbox.model import MixerState
-
+    # State without a cache in it is refused, rather than silently run stateless.
+    with pytest.raises(ValueError, match="needs a KV cache"):
         FullAttention(D_MODEL, HEADS)(torch.randn(1, 1, D_MODEL), state=MixerState())
