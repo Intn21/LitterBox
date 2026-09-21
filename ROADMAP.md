@@ -19,11 +19,13 @@ milestones after it are listed below, but they are not the plan until then.
 
 | | |
 |---|---|
-| ✅ Working | tokenizers, the pretraining data pipeline, 72 real tests |
-| 🔨 Next | config loading, then RoPE, then full attention |
-| ⬜ Stubs | 25 files under `src/` still raise `NotImplementedError` |
+| ✅ Working | tokenizers, the data pipeline, four positional strategies, full attention, RMSNorm, SwiGLU, the block, the backbone — 142 real tests |
+| 🔨 Next | the training loop (step 2); config loading waits until after it |
+| ⬜ Stubs | 20 files under `src/` are still entirely stubs |
 
-Text goes in and `[B, S]` batches come out. Nothing consumes them yet.
+A hand-assembled dense model runs a forward pass, starts at `ln(vocab_size)`,
+leaks nothing from the future, and memorises a batch. Nothing trains it on real
+data yet.
 
 ---
 
@@ -64,14 +66,18 @@ read.
 Config → builder → backbone → blocks, with everything injected and exactly one
 thing behind each compartment.
 
-- [ ] `utils/config.py` — OmegaConf merges, pydantic validates, strictly
+- [ ] `utils/config.py` — OmegaConf merges, pydantic validates, strictly. Moved to
+      after step 2: a hand-assembled model trains without it, and a builder is
+      easier to write once there is a loop to feed
 - [x] `positional/rope.py` — both layouts, named and tested, behind a
       positional seam (`embed`/`rotate` hooks) that also holds a GPT-2 style
       learned table, sinusoidal (fixed or learnable), and NoPE
 - [x] `full_attention` — GQA plus an injected positional strategy; training path
       only, the KV cache is step 3
-- [ ] `block.py` — token mixer and channel mixer both injected, never constructed
-- [ ] `transformer.py` — embeddings, the stack, final norm, LM head
+- [x] `block.py` — token mixer and channel mixer both injected, never constructed;
+      pre-norm residuals, plus depth-scaled init via an opt-in flag
+- [x] `transformer.py` — embeddings, the stack, final norm, LM head
+      (`build_model` from YAML lands with config)
 - [x] SwiGLU, RMSNorm — `model/mlp.py` and `model/norm.py`, each with room for the
       second implementation step 5 asks for
 
@@ -81,6 +87,11 @@ The block must never learn what it is holding. The moment it grows an
 > **Condition.** A forward pass runs and produces a loss — and that loss equals
 > `ln(vocab_size)`. Anything meaningfully below it means the targets are leaking;
 > `demo/data/preprocessing.ipynb` has the assertion ready to lift.
+>
+> **Met, for a hand-assembled model** — `tests/test_backbone.py` asserts it
+> through real blocks with shifted targets, `tests/test_causality.py` proves no
+> position sees the future end to end, and
+> `tests/test_overfit_single_batch.py` memorises a batch.
 
 ### Step 2 — It trains
 

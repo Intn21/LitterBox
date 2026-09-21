@@ -46,6 +46,32 @@ def test_initial_loss_is_ln_vocab():
     assert loss.item() == pytest.approx(math.log(VOCAB), abs=0.05)
 
 
+@pytest.mark.parametrize("n_layers", [1, 4])
+def test_initial_loss_is_ln_vocab_with_real_blocks(assemble, n_layers):
+    """The Step 1 exit condition itself: a forward pass through real blocks —
+    attention, SwiGLU, RMSNorm, RoPE — produces a loss, and it is ln(vocab).
+
+    Real next-token targets, the inputs shifted by one, on purpose: that is the
+    arrangement that would show a leak. If any path let position i see token
+    i+1, this loss would start measurably below ln(vocab)."""
+    torch.manual_seed(0)
+    model = assemble(vocab=VOCAB, n_layers=n_layers)
+    seq = torch.randint(0, VOCAB, (4, 65))
+    logits = model(seq[:, :-1])
+    loss = F.cross_entropy(logits.flatten(0, 1), seq[:, 1:].flatten())
+    assert loss.item() == pytest.approx(math.log(VOCAB), abs=0.05)
+
+
+def test_every_parameter_in_an_assembled_model_gets_gradient(assemble):
+    """No dead weights: one backward pass must reach every tensor, through
+    every block. Tied embeddings count once."""
+    model = assemble(vocab=VOCAB, n_layers=3)
+    seq = torch.randint(0, VOCAB, (2, 33))
+    F.cross_entropy(model(seq[:, :-1]).flatten(0, 1), seq[:, 1:].flatten()).backward()
+    dead = [n for n, p in model.named_parameters() if p.grad is None or p.grad.abs().sum() == 0]
+    assert dead == []
+
+
 def test_embedding_gradient_is_scatter_add():
     """Only rows of tokens present in the batch receive embedding gradient.
 

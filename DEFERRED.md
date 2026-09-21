@@ -147,17 +147,25 @@ sequences, or a multi-byte character split across two tokens raises.
 
 ## Model
 
-### Everything
+### What is still a stub
 
-25 files under `src/litterbox/` still raise `NotImplementedError`: all seven
-mixers, the backbone, the block, RoPE, generation, the cache, and training.
+20 files under `src/litterbox/` are still entirely stubs: six of the seven
+mixers, the KV cache and generation, the training loop, config loading,
+logging, YaRN, and the whole eval harness. Three more have one stubbed entry
+point each — `FullAttention` with inference state, `build_block`, and
+`build_model` — all waiting on the cache or on config.
 
-An implementation was written and then **deliberately reverted** (`64e5658`,
-reverted by `a50c74b`) — building it is the practice this project exists for.
-The interface, the registry, and the configs stand; the bodies do not.
+What stands: the positional strategies, full attention's training path,
+RMSNorm, SwiGLU, the block, and the backbone. A model assembled by hand from
+those passes the step 1 exit condition.
 
-**Trigger.** Now. Steps 1 through 6 in [ROADMAP.md](ROADMAP.md), starting with
-`utils/config.py`.
+An earlier full implementation was written and then **deliberately reverted**
+(`64e5658`, reverted by `a50c74b`) — building it is the practice this project
+exists for.
+
+**Trigger.** Now. Step 2 in [ROADMAP.md](ROADMAP.md), the training loop.
+Config loading was moved after it: a hand-assembled model trains without a
+builder, and a builder is easier to write once there is a loop to feed.
 
 ### `positions` tensor instead of `pos_offset: int`
 

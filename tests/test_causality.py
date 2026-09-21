@@ -52,6 +52,24 @@ def test_no_future_leakage_per_mixer(name, t):
     assert not torch.allclose(before[:, t:], after[:, t:])
 
 
+@pytest.mark.parametrize("t", [1, 9, 23])
+def test_no_future_leakage_through_a_full_model(assemble, t):
+    """The same perturbation test, from token ids to logits, through
+    embeddings, two full blocks, the final norm, and the LM head. Only
+    attention is allowed to move information between positions; this proves
+    nothing else in the stack does it by accident."""
+    torch.manual_seed(0)
+    model = assemble(vocab=64)
+    ids = torch.randint(0, 64, (2, 24))
+    poked = ids.clone()
+    poked[:, t] = (poked[:, t] + 1) % 64
+
+    before, after = model(ids), model(poked)
+
+    assert torch.equal(before[:, :t], after[:, :t])
+    assert not torch.allclose(before[:, t:], after[:, t:])
+
+
 @stub
 def test_no_leakage_across_chunk_boundaries():
     """Chunked implementations must not leak across the chunk seam."""

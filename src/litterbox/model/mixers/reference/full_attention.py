@@ -95,6 +95,9 @@ class FullAttention(TokenMixer):
         self.k_proj = nn.Linear(d_model, kv_heads * self.head_dim, bias=bias)
         self.v_proj = nn.Linear(d_model, kv_heads * self.head_dim, bias=bias)
         self.o_proj = nn.Linear(heads * self.head_dim, d_model, bias=bias)
+        # The last projection before the residual add: opt in to depth-scaled init
+        # (see model.block.scale_residual_projections).
+        self.o_proj.residual_out = True
         for proj in (self.q_proj, self.k_proj, self.v_proj, self.o_proj):
             nn.init.normal_(proj.weight, mean=0.0, std=0.02)  # same scale as the backbone
             if proj.bias is not None:

@@ -83,6 +83,9 @@ class SwiGLU(nn.Module):
         self.gate_proj = nn.Linear(d_model, hidden_dim, bias=bias)
         self.up_proj = nn.Linear(d_model, hidden_dim, bias=bias)
         self.down_proj = nn.Linear(hidden_dim, d_model, bias=bias)
+        # The last projection before the residual add: opt in to depth-scaled init
+        # (see model.block.scale_residual_projections).
+        self.down_proj.residual_out = True
         for proj in (self.gate_proj, self.up_proj, self.down_proj):
             nn.init.normal_(proj.weight, mean=0.0, std=0.02)  # same scale as the backbone
             if proj.bias is not None:
