@@ -72,7 +72,8 @@ thing behind each compartment.
       only, the KV cache is step 3
 - [ ] `block.py` — token mixer and channel mixer both injected, never constructed
 - [ ] `transformer.py` — embeddings, the stack, final norm, LM head
-- [ ] SwiGLU, RMSNorm
+- [x] SwiGLU, RMSNorm — `model/mlp.py` and `model/norm.py`, each with room for the
+      second implementation step 5 asks for
 
 The block must never learn what it is holding. The moment it grows an
 `isinstance` check the compartment has stopped being one.

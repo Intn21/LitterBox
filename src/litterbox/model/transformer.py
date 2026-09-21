@@ -45,7 +45,8 @@ class Transformer(nn.Module):
             layers instead, so passing RoPE here is valid and does nothing —
             which is the seam working, not a bug. ``None`` skips the call.
         final_norm: the norm applied after the last block. Injected like
-            everything else; defaults to identity until RMSNorm lands.
+            everything else. Defaults to identity, which keeps the blockless
+            shell testable; a real model passes ``RMSNorm(d_model)``.
         tie_embeddings: reuse the embedding matrix as the LM head (GPT-2
             convention). Saves ``vocab_size × d_model`` parameters.
     """

@@ -8,10 +8,14 @@ registry is never something you have to debug.
 
 from litterbox.model import mixers  # noqa: F401  (imported for its registrations)
 from litterbox.model.mixers.base import MixerState, TokenMixer
+from litterbox.model.mlp import SwiGLU
+from litterbox.model.norm import RMSNorm
 from litterbox.model.registry import available_mixers, get_mixer, register_mixer
 
 __all__ = [
     "MixerState",
+    "RMSNorm",
+    "SwiGLU",
     "TokenMixer",
     "available_mixers",
     "get_mixer",
