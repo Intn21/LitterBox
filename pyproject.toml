@@ -49,12 +49,13 @@ logging = [
     "tensorboard>=2.17",
 ]
 # The demo/ notebooks. `regex` is needed for GPT-2's pre-tokenization pattern
-# (`re` has no \p{L}); the rest power optional comparison cells that degrade to a
-# printed note when absent.
+# (`re` has no \p{L}); `matplotlib` draws the positional-encoding figures; the
+# rest power optional comparison cells that degrade to a printed note when absent.
 demo = [
     "jupyterlab>=4.2",
     "ipykernel>=6.29",
     "regex>=2024.5",
+    "matplotlib>=3.8",
     "tiktoken>=0.7",
     "datasets>=2.20",
 ]

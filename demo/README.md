@@ -31,7 +31,8 @@ printed note instead of failing.
 | `mixers/full_attention.ipynb` | Causal attention, GQA, the KV cache | planned |
 | `mixers/sliding_window.ipynb` | Local attention and what it costs you | planned |
 | `mixers/linear_attention.ipynb` | Constant-size state, and the parallel/recurrent duality | planned |
-| `positional/rope.ipynb` | Rotary embeddings, and the interleaved/half layout bug | planned |
+| [positional/sinusoidal.ipynb](positional/sinusoidal.ipynb) | Position tables, learned and sinusoidal — why attention needs them, why a stack of waves doesn't repeat, and the distance trick RoPE is built on | ✅ |
+| [positional/rope.ipynb](positional/rope.ipynb) | Rotary embeddings — position as a turn, the `rotate_half` trick traced by hand, and the interleaved/half layout bug that raises nothing | ✅ |
 
 ## Writing a new one
 
