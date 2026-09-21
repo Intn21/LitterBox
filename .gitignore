@@ -25,7 +25,10 @@ checkpoints/
 wandb/
 runs/
 outputs/
-/data/                    # top-level corpora only — NOT src/litterbox/data/
+# Top-level corpora only — the leading slash keeps src/litterbox/data/ tracked.
+# (No trailing comments in this file: git reads them as part of the pattern,
+# which is how this rule silently matched nothing.)
+/data/
 !experiments/**/results.json
 !experiments/**/*.yaml
 !experiments/**/*.md

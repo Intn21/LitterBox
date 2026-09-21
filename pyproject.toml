@@ -71,6 +71,10 @@ tokenizers = [
     "sentencepiece>=0.2",
 ]
 
+[project.scripts]
+# Tokenize a corpus into packed shards from a data config: litterbox-pack configs/data/<name>.yaml
+litterbox-pack = "litterbox.data.prepare:main"
+
 [project.urls]
 Homepage = "https://github.com/Intn21/LitterBox"
 Issues = "https://github.com/Intn21/LitterBox/issues"

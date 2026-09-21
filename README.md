@@ -70,7 +70,7 @@ experiment note records its GPU architecture.
 ## Repository layout
 
 ```
-configs/          model / training / eval configs — composition happens here
+configs/          model / training / data / eval configs — composition happens here
 src/litterbox/
   model/          backbone, block, mixer registry
   model/mixers/   reference/ (readable, correct) and fast/ (kernels, later)

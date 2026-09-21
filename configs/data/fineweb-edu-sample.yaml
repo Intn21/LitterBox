@@ -1,0 +1,24 @@
+# FineWeb-Edu, the 10B-token sample — web pages filtered by an educational-
+# quality classifier (HuggingFace, 2024). The standard "real text" corpus for
+# ~100M-parameter runs, and what configs/training/base.yaml is sized for.
+#
+#   litterbox-pack configs/data/fineweb-edu-sample.yaml          # ~10B tokens, ~20 GB packed
+#
+# Ships only a train split, so validation is carved out by document hash. That
+# reads the corpus once per side, hence `streaming: false`: the ~28 GB of Parquet
+# lands in the HF cache once instead of being streamed twice.
+#
+# `subset` is what the Hub calls the dataset's configuration name.
+description: FineWeb-Edu sample-10BT (HuggingFaceFW/fineweb-edu), GPT-2 BPE
+out_dir: data/fineweb-edu-10bt-gpt2
+
+tokenizer: {type: tiktoken, encoding: gpt2}
+
+source:
+  type: huggingface
+  name: HuggingFaceFW/fineweb-edu
+  subset: sample-10BT
+  split: train
+  streaming: false
+
+holdout: {val_fraction: 0.005, seed: 0}   # ~50M validation tokens

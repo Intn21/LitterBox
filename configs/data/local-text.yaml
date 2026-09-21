@@ -1,0 +1,26 @@
+# Your own corpus. A template: copy it, point `pattern` at your files.
+#
+#   litterbox-pack configs/data/local-text.yaml
+#
+# Three local shapes are covered by the registered sources:
+#
+#   plain text, one document per file
+#     {type: files, pattern: "*.txt", root: corpus/}
+#   plain text, one document per line
+#     {type: files, pattern: "*.txt", root: corpus/, per_line: true}
+#   JSON Lines, one field per record
+#     {type: jsonl, pattern: "*.jsonl", root: corpus/, text_key: text}
+#
+# and anything the `datasets` library reads comes through the huggingface source
+# with a generic loader — which is how Parquet and compressed JSONL work:
+#
+#     {type: huggingface, name: parquet, data_files: "corpus/*.parquet", streaming: false}
+#     {type: huggingface, name: json,    data_files: "corpus/*.jsonl.zst", streaming: false}
+description: local plain-text corpus, byte-level tokenizer
+out_dir: data/local-text-byte
+
+tokenizer: {type: byte}          # no download, no vocabulary to fit; swap for tiktoken for real runs
+
+source: {type: files, pattern: "*.txt", root: corpus/}
+
+holdout: {val_fraction: 0.05, seed: 0}

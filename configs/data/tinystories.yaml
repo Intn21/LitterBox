@@ -1,0 +1,18 @@
+# TinyStories — ~2.1M short children's stories written by GPT-3.5/4 with a
+# deliberately tiny vocabulary (Eldan & Li, 2023). The point of the corpus is
+# that models of 1-30M parameters trained on it produce coherent English, which
+# makes it the right first target for a from-scratch training loop: a wrong
+# model shows up as nonsense within minutes rather than hours.
+#
+#   litterbox-pack configs/data/tinystories.yaml                 # ~470M tokens, under 1 GB
+#   litterbox-pack configs/data/tinystories.yaml --limit 2000 --out data/tinystories-smoke
+#
+# Ships its own validation split, so both are named explicitly.
+description: TinyStories (roneneldan/TinyStories), GPT-2 BPE
+out_dir: data/tinystories-gpt2
+
+tokenizer: {type: tiktoken, encoding: gpt2}
+
+splits:
+  train: {type: huggingface, name: roneneldan/TinyStories, split: train}
+  val:   {type: huggingface, name: roneneldan/TinyStories, split: validation}
