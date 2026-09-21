@@ -3,18 +3,21 @@
 Run it::
 
     python examples/train_tinystories.py
+    python examples/train_tinystories.py --model configs/models/tinystories-swa-hybrid.yaml
     python examples/train_tinystories.py training.max_steps=300 logging.out_dir=runs/smoke
-    python examples/train_tinystories.py --d-model 384 --layers 8 training.compile=true   # on CUDA
+    python examples/train_tinystories.py model.tier=fast training.compile=true      # on CUDA
 
-Anything after the flags is an OmegaConf override applied to the training
-config. The first run packs TinyStories (~90 s, ~1 GB under ``data/``); later
-runs find it up to date and start immediately. Interrupt and re-run to resume
-from the last checkpoint.
+The model comes from ``--model``, a YAML under ``configs/models/``. Swapping the
+token mixer — full attention, sliding window, a hybrid of the two — is choosing a
+different file; nothing in this script, the loop, or generation changes.
 
-The model is assembled by hand from arguments rather than from a model config,
-which is ROADMAP work still to come. The default shape — 256 wide, 6 layers —
-is 17.6M parameters, of which 12.9M are the embedding table: the GPT-2
-vocabulary has 50,257 entries and children's stories use a few thousand.
+Anything after the flags is an OmegaConf override: ``training.*`` and
+``logging.*`` go to the training config, ``model.*`` to the model config. Each
+model logs to ``runs/<model name>`` unless told otherwise.
+
+The first run packs TinyStories (~90 s, ~1 GB under ``data/``); later runs find
+it up to date and start immediately. Interrupt and re-run to resume from the
+last checkpoint.
 
 NOTE the ``if __name__ == "__main__"`` guard. Packing may use worker processes,
 and on macOS each worker re-imports this module.
@@ -23,12 +26,14 @@ and on macOS each worker re-imports this module.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import torch
 
 from litterbox.infer import generate
-from litterbox.model import dense_transformer
+from litterbox.model import build_model
 from litterbox.train import load_run_config, train
+from litterbox.utils.config import load_model_config
 
 PROMPT = "Once upon a time"
 
@@ -36,26 +41,23 @@ PROMPT = "Once upon a time"
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--config", default="configs/training/tinystories-small.yaml")
-    parser.add_argument("--d-model", type=int, default=256)
-    parser.add_argument("--layers", type=int, default=6)
-    parser.add_argument("--heads", type=int, default=8)
-    parser.add_argument("--kv-heads", type=int, default=2)
-    parser.add_argument("--vocab-size", type=int, default=50_304, help="50,257 padded to 64s")
-    parser.add_argument("--mixer", default="full_attention")
+    parser.add_argument("--model", default="configs/models/tinystories-dense.yaml")
     parser.add_argument("--fresh", action="store_true", help="ignore any existing checkpoint")
-    parser.add_argument("overrides", nargs="*", help="e.g. training.max_steps=300")
+    parser.add_argument("overrides", nargs="*", help="e.g. training.max_steps=300 model.tier=fast")
     args = parser.parse_args()
 
-    cfg = load_run_config(args.config, args.overrides)
+    model_overrides = [o[len("model.") :] for o in args.overrides if o.startswith("model.")]
+    run_overrides = [o for o in args.overrides if not o.startswith("model.")]
+    if not any(o.startswith("logging.out_dir=") for o in run_overrides):
+        run_overrides.append(f"logging.out_dir=runs/{Path(args.model).stem}")
+
+    cfg = load_run_config(args.config, run_overrides)
+    model_cfg = load_model_config(args.model, model_overrides)
     torch.manual_seed(cfg.training.seed)
-    model = dense_transformer(
-        args.vocab_size,
-        args.d_model,
-        args.layers,
-        args.heads,
-        args.kv_heads,
-        max_seq_len=cfg.training.seq_len,
-        mixer=args.mixer,
+    model = build_model(model_cfg)
+    print(
+        f"{Path(args.model).stem}: {[layer.mixer for layer in model_cfg.layer_pattern]} "
+        f"x{model_cfg.n_layers // len(model_cfg.layer_pattern)}"
     )
 
     # The tokenizer is only known once the data is prepared, so resolve it lazily

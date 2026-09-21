@@ -10,11 +10,6 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-stub = pytest.mark.xfail(
-    reason="Scaffolding: needs utils/config.py to build a model from YAML.",
-    strict=False,
-)
-
 CONFIG_DIR = pathlib.Path(__file__).parent.parent / "configs" / "models"
 
 
@@ -43,8 +38,35 @@ def test_a_hand_assembled_model_overfits_one_batch(assemble):
     assert loss.item() < 0.05
 
 
-@stub
-@pytest.mark.slow
-def test_every_model_config_overfits_one_batch():
-    """Loss must fall near zero on a single fixed batch, for each config."""
-    raise NotImplementedError("Milestone 1")
+TRIO = ["tinystories-dense", "tinystories-swa", "tinystories-swa-hybrid"]
+# Shrunk so the test takes a second, but the layer_pattern — the only thing that
+# differs between the three files — is used exactly as written.
+SHRINK = ["d_model=64", "vocab_size=64", "max_seq_len=64"]
+
+
+@pytest.mark.parametrize("name", TRIO)
+def test_every_model_config_overfits_one_batch(name):
+    """ROADMAP step 4's condition, in miniature: three configs, one code path.
+
+    Everything below this line is identical for all three. The YAML chooses the
+    mixers; building, the forward pass, the loss and the optimizer never learn
+    which ones they got."""
+    from litterbox.model import build_model
+    from litterbox.utils.config import load_model_config
+
+    torch.manual_seed(0)
+    model = build_model(load_model_config(CONFIG_DIR / f"{name}.yaml", SHRINK))
+    seq = torch.randint(0, 64, (4, 49))
+    x, y = seq[:, :-1], seq[:, 1:]
+    opt = torch.optim.AdamW(model.parameters(), lr=3e-3)
+
+    first = None
+    for _ in range(300):
+        loss = F.cross_entropy(model(x).flatten(0, 1), y.flatten())
+        first = loss.item() if first is None else first
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+    assert first > 3.5
+    assert loss.item() < 0.1

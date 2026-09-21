@@ -1,0 +1,17 @@
+# Sliding-window attention in every layer. See tinystories-dense.yaml.
+#
+# window 64 against a 256-token context, so the window genuinely binds: one
+# layer sees a quarter of the sequence. Through 8 layers influence still reaches
+# 8 x 63 = 504 positions, further than the context — so expect a loss close to
+# the dense model's. What a window costs is exact retrieval of something far
+# back, and TinyStories, whose stories are ~200 tokens, barely asks for that.
+model:
+  d_model: 256
+  n_layers: 8
+  vocab_size: 50304
+  max_seq_len: 256
+  layer_pattern:
+    - {mixer: sliding_window, heads: 8, kv_heads: 2, window: 64, pos: rope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true

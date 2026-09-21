@@ -292,6 +292,13 @@ def train(
             f"but the model's embedding has {vocab:,} rows"
         )
 
+    limit = getattr(model, "max_seq_len", None)
+    if limit is not None and t.seq_len > limit:
+        raise ValueError(
+            f"training.seq_len={t.seq_len} exceeds the model's max_seq_len={limit}; "
+            f"RoPE has no angles for positions past it"
+        )
+
     # ---- device and precision
     device = pick_device(t.device)
     if device.type == "cuda":

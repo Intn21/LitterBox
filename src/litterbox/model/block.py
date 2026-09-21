@@ -127,8 +127,3 @@ def scale_residual_projections(blocks: Iterable[nn.Module], *, base_std: float =
                 nn.init.normal_(module.weight, mean=0.0, std=std)
                 count += 1
     return count
-
-
-def build_block(*args, **kwargs):
-    """Assemble one block from a ``layer_pattern`` entry and the model config."""
-    raise NotImplementedError("Lands with utils/config.py, which resolves names to instances.")

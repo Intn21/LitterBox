@@ -1,0 +1,19 @@
+# Three sliding-window layers per full-attention layer. See tinystories-dense.yaml.
+#
+# The four-entry pattern tiles twice into 8 layers, so layers 3 and 7 are full
+# attention and the other six are windowed. Six of eight KV caches stop growing
+# at 64 tokens; two keep everything and give the model somewhere to look things
+# up exactly.
+model:
+  d_model: 256
+  n_layers: 8
+  vocab_size: 50304
+  max_seq_len: 256
+  layer_pattern:                 # tiles to n_layers
+    - {mixer: sliding_window, heads: 8, kv_heads: 2, window: 64, pos: rope}
+    - {mixer: sliding_window, heads: 8, kv_heads: 2, window: 64, pos: rope}
+    - {mixer: sliding_window, heads: 8, kv_heads: 2, window: 64, pos: rope}
+    - {mixer: full_attention, heads: 8, kv_heads: 2, pos: rope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true

@@ -131,8 +131,3 @@ class Transformer(nn.Module):
     def n_params(self) -> int:
         """Trainable parameters, counting tied weights once."""
         return sum(p.numel() for p in self.parameters())
-
-
-def build_model(*args, **kwargs):
-    """Instantiate a model from a validated model config."""
-    raise NotImplementedError("Milestone 1: lands with utils/config.py and the first mixer.")

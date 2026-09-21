@@ -1,0 +1,21 @@
+# The TinyStories trio: three models that differ only in this file.
+#
+#   python examples/train_tinystories.py --model configs/models/tinystories-dense.yaml
+#   python examples/train_tinystories.py --model configs/models/tinystories-swa.yaml
+#   python examples/train_tinystories.py --model configs/models/tinystories-swa-hybrid.yaml
+#
+# Same width, depth, vocabulary, MLP and norm in all three; only layer_pattern
+# changes. That is ROADMAP step 4's condition, at a size a laptop GPU can train:
+# about 19M parameters, of which 12.9M are the embedding table.
+#
+# This one is the baseline: full attention in every layer.
+model:
+  d_model: 256
+  n_layers: 8
+  vocab_size: 50304          # GPT-2's 50,257 padded to a multiple of 64
+  max_seq_len: 256
+  layer_pattern:
+    - {mixer: full_attention, heads: 8, kv_heads: 2, pos: rope}
+  mlp: {type: swiglu, hidden_mult: 4}
+  norm: {type: rmsnorm, eps: 1.0e-5}
+  tie_embeddings: true
