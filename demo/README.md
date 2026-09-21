@@ -30,6 +30,7 @@ printed note instead of failing.
 | [data/datasets.ipynb](data/datasets.ipynb) | Pretraining corpora — what exists and how big, how many tokens a model needs, reading `.txt` / `.jsonl` / Parquet / the Hub, three ways to leak a validation set, and the one command that packs a data config | ✅ |
 | `tokenizers/unigram.ipynb` | Unigram LM — the opposite direction: prune a huge vocab with EM | planned |
 | [mixers/full_attention.ipynb](mixers/full_attention.ipynb) | Attention by hand, then causal, multi-head and grouped-query — the loss that's too good without a mask, the head split with the right shape and the wrong tokens, and what the KV cache costs | ✅ |
+| [infer/kv_cache.ipynb](infer/kv_cache.ipynb) | The KV cache — why causality makes the past immutable (and why BERT can't do this), a cache built by hand, the three shapes of the mask, the decoded token that sees only the first word, what the cache costs in memory, and what it does *not* speed up | ✅ |
 | `mixers/sliding_window.ipynb` | Local attention and what it costs you | planned |
 | `mixers/linear_attention.ipynb` | Constant-size state, and the parallel/recurrent duality | planned |
 | [positional/sinusoidal.ipynb](positional/sinusoidal.ipynb) | Position tables, learned and sinusoidal — why attention needs them, why a stack of waves doesn't repeat, and the distance trick RoPE is built on | ✅ |
