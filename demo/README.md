@@ -28,7 +28,7 @@ printed note instead of failing.
 | [tokenizers/bpe.ipynb](tokenizers/bpe.ipynb) | Byte-pair encoding — train, encode, decode | ✅ |
 | [data/preprocessing.ipynb](data/preprocessing.ipynb) | Text → sharded token files → batches, and the four silent failures along the way | ✅ |
 | `tokenizers/unigram.ipynb` | Unigram LM — the opposite direction: prune a huge vocab with EM | planned |
-| `mixers/full_attention.ipynb` | Causal attention, GQA, the KV cache | planned |
+| [mixers/full_attention.ipynb](mixers/full_attention.ipynb) | Attention by hand, then causal, multi-head and grouped-query — the loss that's too good without a mask, the head split with the right shape and the wrong tokens, and what the KV cache costs | ✅ |
 | `mixers/sliding_window.ipynb` | Local attention and what it costs you | planned |
 | `mixers/linear_attention.ipynb` | Constant-size state, and the parallel/recurrent duality | planned |
 | [positional/sinusoidal.ipynb](positional/sinusoidal.ipynb) | Position tables, learned and sinusoidal — why attention needs them, why a stack of waves doesn't repeat, and the distance trick RoPE is built on | ✅ |
