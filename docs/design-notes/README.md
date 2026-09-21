@@ -11,9 +11,9 @@ Planned pages, roughly in implementation order:
 
 | Note | Technique | Milestone |
 |---|---|---|
-| `full-attention.md` | MHA/GQA, causal masking, RoPE application | 1 |
+| [`full-attention.md`](full-attention.md) | MHA/GQA, causal masking, RoPE application, the KV cache | 1 ✅ |
 | `rope-layouts.md` | Interleaved vs non-interleaved, and why it matters | 1 |
-| `sliding-window.md` | Local attention, window/depth interaction in hybrids | 2 |
+| [`sliding-window.md`](sliding-window.md) | Local attention, the rolling cache, reach versus retrieval | 2 ✅ |
 | `linear-attention.md` | Kernel feature maps, the parallel/recurrent duality | 3 |
 | `deltanet.md` | The delta rule as an error-correcting state write | 3 |
 | `gated-deltanet.md` | Data-dependent decay, state precision sensitivity | 3 |

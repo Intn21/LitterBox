@@ -19,13 +19,14 @@ milestones after it are listed below, but they are not the plan until then.
 
 | | |
 |---|---|
-| ✅ Working | tokenizers, data configs and packing, four positional strategies, full attention in two tiers, RMSNorm, SwiGLU, the block, the backbone, the training loop, the KV cache and cached generation — 218 real tests |
-| 🔨 Next | config loading, then a second mixer (step 4) |
-| ⬜ Stubs | 17 files under `src/` are still entirely stubs |
+| ✅ Working | tokenizers, data configs and packing, four positional strategies, full and sliding-window attention in two tiers each, RMSNorm, SwiGLU, the block, the backbone, model configs with layer-pattern tiling, the training loop, both KV caches and cached generation — 275 real tests |
+| 🔨 Next | a second MLP and a second norm (step 5), then linear attention (step 6) |
+| ⬜ Stubs | 15 files under `src/` are still entirely stubs |
 
-A dense model assembled by hand trains on TinyStories, and generates from a KV
-cache exactly what it would generate without one. The only mixer is still full
-attention, so nothing has yet been *swapped*.
+Swapping the token mixer is now a config edit: a dense model, a sliding-window
+model and a 3:1 hybrid train and generate from one code path. Both mixers are
+attention with a KV cache, though, so the state interface has not yet met
+something it was not shaped around.
 
 ---
 
@@ -66,9 +67,8 @@ read.
 Config → builder → backbone → blocks, with everything injected and exactly one
 thing behind each compartment.
 
-- [ ] `utils/config.py` — OmegaConf merges, pydantic validates, strictly. Moved to
-      after step 2: a hand-assembled model trains without it, and a builder is
-      easier to write once there is a loop to feed
+- [x] `utils/config.py` — OmegaConf merges, pydantic validates, strictly. Landed
+      with step 4, the first time a model could not be assembled from arguments
 - [x] `positional/rope.py` — both layouts, named and tested, behind a
       positional seam (`embed`/`rotate` hooks) that also holds a GPT-2 style
       learned table, sinusoidal (fixed or learnable), and NoPE
@@ -77,7 +77,6 @@ thing behind each compartment.
 - [x] `block.py` — token mixer and channel mixer both injected, never constructed;
       pre-norm residuals, plus depth-scaled init via an opt-in flag
 - [x] `transformer.py` — embeddings, the stack, final norm, LM head
-      (`build_model` from YAML lands with config)
 - [x] SwiGLU, RMSNorm — `model/mlp.py` and `model/norm.py`, each with room for the
       second implementation step 5 asks for
 
@@ -150,12 +149,26 @@ that only works at training time is not the thing being built.
 · · · · · █ █ █
 ```
 
-- [ ] `sliding_window` — full attention with a different mask
-- [ ] `layer_pattern` tiling
-- [ ] A SWA/full hybrid config
+- [x] `sliding_window` — full attention with a different mask, literally: the
+      mask is one overridable rule, and a windowed cache that stops growing
+- [x] `layer_pattern` tiling, with `utils/config.py` and `model/build.py` turning a
+      YAML file into a model
+- [x] A SWA/full hybrid config
 
 > **Condition.** `tiny-dense`, `tiny-swa`, and `tiny-swa-hybrid` all train from
 > unchanged code — only the YAML differs.
+>
+> **Met**, at a size a laptop trains: the `tinystories-*` trio, 18.5M parameters
+> each, identical but for `layer_pattern`. 300 steps from one script reach
+> validation losses of 2.95 (dense), 2.92 (windowed) and 2.91 (hybrid), and each
+> trained model generates from its caches exactly what it generates without them
+> — the hybrid from three rolling caches and one full cache per repeat. After 200
+> tokens those caches hold 816, 264 and 402 kB. Written up in
+> `experiments/2026-09-21-mixer-seam-trio/`.
+>
+> One seed and 1% of an epoch: the loss ordering is not a finding. And that a
+> hybrid *recovers* what a window *loses* is not shown here — it needs a
+> retrieval task past the window, which needs the eval harness.
 
 ### Step 5 — Prove the other seams
 

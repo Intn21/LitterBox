@@ -196,23 +196,25 @@ mask. Build it together with the SFT data path, not before.
 
 ### What is still a stub
 
-17 files under `src/litterbox/` are still entirely stubs: six of the seven
-mixers, model config loading, logging backends, YaRN, the distributed adapter,
-and the whole eval harness. Two more have one stubbed entry point each —
-`build_block` and `build_model` — both waiting on config.
+15 files under `src/litterbox/` are still entirely stubs: five of the seven
+mixers (linear attention, DeltaNet, Gated DeltaNet, DSA, MLA), logging backends,
+YaRN, the training-side data and distributed adapters, and the whole eval
+harness.
 
-What stands: the positional strategies, full attention in two tiers with its
-inference path, RMSNorm, SwiGLU, the block, the backbone, data configs and
-packing, the training loop, the KV cache, and cached generation. A model
-assembled by hand from those trains on TinyStories and generates from a cache
-exactly what it generates without one.
+What stands: the positional strategies; full attention and sliding-window
+attention, each in two tiers with its inference path; RMSNorm, SwiGLU, the block
+and the backbone; model configs with layer-pattern tiling; data configs and
+packing; the training loop; both KV caches; and cached generation. A dense model,
+a sliding-window model and a 3:1 hybrid of the two train from one code path with
+only the YAML differing.
 
 An earlier full implementation was written and then **deliberately reverted**
 (`64e5658`, reverted by `a50c74b`) — building it is the practice this project
 exists for.
 
-**Trigger.** Now. Config loading, then step 4 in [ROADMAP.md](ROADMAP.md): a
-second mixer, which is the first time anything is actually swapped.
+**Trigger.** Now. Step 5 in [ROADMAP.md](ROADMAP.md) — a second MLP and a second
+norm, so no seam has one implementation behind it — then step 6, linear
+attention, whose state is not a cache at all.
 
 ### `positions` tensor instead of `pos_offset: int`
 
@@ -246,6 +248,24 @@ RoPE's tables are pinned to fp32 through model-wide casts.
 **Trigger.** The first session on a CUDA machine. Run the suite, then
 `examples/train_tinystories.py training.compile=true` for a few hundred steps,
 and delete this entry.
+
+### Windowed attention that is cheap to *train*
+
+Sliding-window attention saves memory at inference, where its cache stops
+growing. It saves nothing in training: both tiers still compute a full `[s, s]`
+score matrix and mask most of it away, so compute and activation memory are
+those of full attention.
+
+**Why deferred.** Skipping the masked blocks is a kernel — FlexAttention's block
+masks, or FlashAttention's native `window_size` — and the reference tier's job is
+to be obviously correct. At TinyStories scale (256 tokens, window 64) there is
+nothing to save.
+
+**Trigger.** Training a windowed or hybrid model at a context where attention
+dominates the step — a few thousand tokens at 100M parameters. The 100M SWA
+configs are written for 8,192.
+**Cost later.** Low to moderate, and contained in `mixers/fast/sliding_window.py`.
+The reference mixer is the oracle it gets tested against.
 
 ### A loss that does not materialise the logits
 
@@ -312,13 +332,18 @@ ablation.
 ### Registry unification
 
 There are three separate registry implementations: `model/registry.py`,
-`data/tokenizer/base.py`, and `data/source.py`.
+`data/tokenizer/base.py`, and `data/source.py`. MLPs and norms have none — with
+one implementation each, `model/build.py` resolves them from two small dicts.
 
-**Why deferred.** Each is ~30 lines and local. Unifying them means touching model
-code from data code, or introducing a shared `utils/registry.py` and migrating
-all three. Not worth the churn while the interfaces are still moving.
+**Why deferred.** Each registry is ~30 lines and local. Unifying them means
+touching model code from data code, or introducing a shared `utils/registry.py`
+and migrating all three. Not worth the churn while the interfaces are still
+moving.
 
 **Trigger.** A fourth registry, or a change that has to be made in all three.
+ROADMAP step 5 adds a second MLP and a second norm; two entries in a dict is
+still a dict, but if either grows a third, or wants registration from outside
+`build.py`, that is the fourth registry and this fires.
 **Cost later.** Low, and mechanical.
 
 ### `transformers` is not tested in CI

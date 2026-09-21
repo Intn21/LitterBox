@@ -19,9 +19,21 @@ class MyMixer(TokenMixer):
 
     def forward(self, x, state=None, pos_offset=0): ...
 
+    def init_state(self, batch_size, max_len, *, dtype, device) -> MixerState: ...
+
     @property
     def state_bytes_per_token(self) -> float: ...
+
+    def state_bytes(self, context_len) -> float: ...   # override if your state is bounded
 ```
+
+No `**kwargs` in `__init__`: every argument is named, so a misspelled config key
+raises instead of being swallowed.
+
+If your mixer is attention with a different idea of *which keys a query may see*,
+you may not need a `forward` at all. Subclass `FullAttention` and override
+`_allowed(q_pos, k_pos)`; `sliding_window.py` is the worked example, and both
+tiers pick the rule up from one mixin.
 
 Rules for the reference tier:
 
@@ -35,6 +47,9 @@ Rules for the reference tier:
   `test_state_consistency.py` exists precisely because they usually do.
 - **`pos_offset` is not optional.** It is the absolute position of `x[:, 0]`, and
   ignoring it produces a model that trains fine and generates garbage.
+- **`init_state` is how generation stays ignorant.** It asks each mixer for the
+  state it needs and never learns what kind that is — a growing KV cache, a
+  rolling one, a fixed-size matrix. Ignore `max_len` if your state is bounded.
 
 ## 2. Pick your positional handling explicitly
 
@@ -46,9 +61,10 @@ you accuracy, which is how it survived into a shipped model once already.
 
 ## 3. Make it configurable
 
-Nothing to wire up: the registry resolves your name from `layer_pattern`. Add a
-config under `configs/models/` demonstrating the mixer, ideally both pure and in
-a hybrid.
+Nothing to wire up: the registry resolves your name from `layer_pattern`, and
+every other key in that entry is passed to your constructor. Add a config under
+`configs/models/` demonstrating the mixer, ideally both pure and in a hybrid.
+Register a fused twin as `<name>_fast` and `tier: fast` will find it.
 
 ## 4. Clear the four tests
 

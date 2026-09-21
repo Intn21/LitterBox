@@ -1,0 +1,76 @@
+{
+  "commit": "9ed57d0",
+  "hardware": "Apple M4, MPS backend",
+  "torch": "2.13.0",
+  "tokens_per_step": 16384,
+  "steps": 300,
+  "seed": 1337,
+  "runs": {
+    "dense": {
+      "parameters": 18520000,
+      "val_loss": {
+        "100": 3.661,
+        "200": 3.1158,
+        "300": 2.9524
+      },
+      "train_loss_at_300": 2.9021,
+      "mean_tokens_per_sec": 7683,
+      "cached_generation_matches_uncached": true,
+      "kv_cache_kB_per_layer_after_200_tokens": [
+        102,
+        102,
+        102,
+        102,
+        102,
+        102,
+        102,
+        102
+      ],
+      "kv_cache_kB_total": 816
+    },
+    "swa": {
+      "parameters": 18520000,
+      "val_loss": {
+        "100": 3.6299,
+        "200": 3.0745,
+        "300": 2.9148
+      },
+      "train_loss_at_300": 2.8612,
+      "mean_tokens_per_sec": 8195,
+      "cached_generation_matches_uncached": true,
+      "kv_cache_kB_per_layer_after_200_tokens": [
+        33,
+        33,
+        33,
+        33,
+        33,
+        33,
+        33,
+        33
+      ],
+      "kv_cache_kB_total": 264
+    },
+    "swa-hybrid": {
+      "parameters": 18520000,
+      "val_loss": {
+        "100": 3.621,
+        "200": 3.0719,
+        "300": 2.9107
+      },
+      "train_loss_at_300": 2.8577,
+      "mean_tokens_per_sec": 8415,
+      "cached_generation_matches_uncached": true,
+      "kv_cache_kB_per_layer_after_200_tokens": [
+        33,
+        33,
+        33,
+        102,
+        33,
+        33,
+        33,
+        102
+      ],
+      "kv_cache_kB_total": 402
+    }
+  }
+}
