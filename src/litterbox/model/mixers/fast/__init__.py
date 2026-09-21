@@ -6,4 +6,4 @@ shares its parameters and state-dict keys so checkpoints move between tiers.
 Importing this package registers every fast mixer.
 """
 
-from litterbox.model.mixers.fast import full_attention  # noqa: F401
+from litterbox.model.mixers.fast import full_attention, sliding_window  # noqa: F401

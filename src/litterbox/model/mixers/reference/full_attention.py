@@ -113,7 +113,7 @@ class FullAttention(TokenMixer):
         pos_offset: int = 0,
     ) -> tuple[Tensor, MixerState | None]:
         b, s, _ = x.shape
-        past = self._past_length(state, pos_offset)
+        self._check_position(state, pos_offset)
 
         # 1. Project, then split the channel axis into heads. The view must
         #    come before the transpose: channels are laid out head-by-head, so
@@ -135,7 +135,7 @@ class FullAttention(TokenMixer):
         #     cache is kv_heads wide rather than heads wide. With no state, the
         #     past is empty and k, v are just this call's.
         if state is not None:
-            k, v = state.kv.append(k, v)  # [b, kv, past + s, d]
+            k, v = state.kv.append(k, v)  # [b, kv, keys, d]: the kept past, then these
 
         # 3. Grouped-query: hand each KV head to its group of query heads.
         #    repeat_interleave gives [kv0, kv0, kv1, kv1, ...], so query heads
@@ -148,21 +148,27 @@ class FullAttention(TokenMixer):
         # 4. Score every query against every key. Scaled by sqrt(head_dim) —
         #    the width of the vectors being dotted, not d_model — so the scores
         #    have unit variance at init and softmax does not start saturated.
-        scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)  # [b, h, s, past + s]
+        scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)  # [b, h, s, keys]
 
-        # 5. Causal mask: query i sits at absolute position past + i and may
-        #    see key j only when j <= past + i. In training past is 0 and this
-        #    is the usual lower triangle; when decoding one token it is a single
-        #    row of all-True, because everything in the cache is the past.
-        #    Masked scores become -inf, which softmax turns into exactly 0 — not
-        #    a small number, zero, which is what makes the causality test able
-        #    to demand bit-identical outputs.
-        allowed = torch.ones(s, past + s, dtype=torch.bool, device=x.device).tril(diagonal=past)
+        # 5. The mask, built from absolute positions rather than from indices.
+        #    The query at row i sits at position pos_offset + i. The keys start
+        #    wherever the cache says they do: position 0 for a full cache, later
+        #    for one that has dropped old tokens, and pos_offset when there is no
+        #    cache and the keys are simply this call's. Which pairs may interact
+        #    is the mixer's one real decision, so it lives in _allowed() — full
+        #    attention and sliding-window attention differ in that method and
+        #    nowhere else. Masked scores become -inf, which softmax turns into
+        #    exactly 0 — not a small number, zero, which is what lets the
+        #    causality test demand bit-identical outputs.
+        first_key = pos_offset if state is None else state.kv.first_position
+        q_pos = torch.arange(pos_offset, pos_offset + s, device=x.device)
+        k_pos = torch.arange(first_key, first_key + k.shape[2], device=x.device)
+        allowed = self._allowed(q_pos, k_pos)  # [s, keys]
         scores = scores.masked_fill(~allowed, float("-inf"))
 
         # 6. Scores -> weights. Softmax in fp32 whatever the activation dtype:
         #    exp() of a bf16 score overflows and underflows far too easily.
-        weights = scores.float().softmax(dim=-1).to(q.dtype)  # [b, h, s, past + s]
+        weights = scores.float().softmax(dim=-1).to(q.dtype)  # [b, h, s, keys]
 
         # 7. Weighted average of the payloads, then undo the head split —
         #    transpose back first, so heads are adjacent to channels again
@@ -171,26 +177,34 @@ class FullAttention(TokenMixer):
         out = out.transpose(1, 2).reshape(b, s, self.heads * self.head_dim)  # [b, s, h*d]
         return self.o_proj(out), state
 
-    def _past_length(self, state: MixerState | None, pos_offset: int) -> int:
-        """How many tokens are already cached, checked against ``pos_offset``.
+    def _allowed(self, q_pos: Tensor, k_pos: Tensor) -> Tensor:
+        """Which keys each query may see: ``[queries, keys]`` of bool, from positions.
 
-        For a full-attention cache the two are the same number by definition:
-        slot ``j`` holds the token at position ``j``. If they disagree, the
-        caller advanced one and not the other, and the usual way that happens is
-        decoding a lone token with the default ``pos_offset=0`` — which turns
-        its query as if it were the first token of the document. Nothing about
-        that fails on its own; the attention pattern is just quietly wrong.
+        Causal: a key is visible when it is not in the query's future. With no
+        cache this is the lower triangle; decoding one token it is a single
+        all-True row; a chunk appended to a non-empty cache gives a triangle
+        shifted right by the length of the past.
+        """
+        return k_pos[None, :] <= q_pos[:, None]
+
+    def _check_position(self, state: MixerState | None, pos_offset: int) -> None:
+        """Refuse a ``pos_offset`` that disagrees with how many tokens the cache has seen.
+
+        The next token's position *is* the number of tokens before it. If the two
+        disagree, the caller advanced one and not the other, and the usual way
+        that happens is decoding a lone token with the default ``pos_offset=0`` —
+        which turns its query as if it opened the document. Nothing about that
+        fails on its own; the attention pattern is just quietly wrong.
         """
         if state is None:
-            return 0
+            return
         if state.kv is None:
-            raise ValueError("full attention needs a KV cache: build state with init_state()")
-        if state.kv.length != pos_offset:
+            raise ValueError("attention needs a KV cache: build state with init_state()")
+        if state.kv.total != pos_offset:
             raise ValueError(
-                f"pos_offset={pos_offset} but the cache already holds {state.kv.length} tokens. "
+                f"pos_offset={pos_offset} but the cache has already seen {state.kv.total} tokens. "
                 f"They must match: the next token's position is the number of tokens before it."
             )
-        return state.kv.length
 
     def init_state(
         self,

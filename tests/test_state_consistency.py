@@ -21,19 +21,24 @@ stub = pytest.mark.xfail(
     strict=False,
 )
 
-D_MODEL, HEADS, KV_HEADS, SEQ, BATCH = 32, 4, 2, 20, 2
+D_MODEL, HEADS, KV_HEADS, SEQ, BATCH, WINDOW = 32, 4, 2, 20, 2, 6
 HEAD_DIM = D_MODEL // HEADS
 
 
 def build(name):
     """One small instance of each mixer that has landed. Add a line per mixer."""
     torch.manual_seed(0)
+    pos = RoPE(HEAD_DIM, 64, layout="half")
     if name in ("full_attention", "full_attention_fast"):
-        return get_mixer(name)(D_MODEL, HEADS, KV_HEADS, pos=RoPE(HEAD_DIM, 64, layout="half"))
+        return get_mixer(name)(D_MODEL, HEADS, KV_HEADS, pos=pos)
+    if name in ("sliding_window", "sliding_window_fast"):
+        # A window well inside SEQ, so every test crosses the point where the
+        # cache starts forgetting.
+        return get_mixer(name)(D_MODEL, HEADS, KV_HEADS, pos=pos, window=WINDOW)
     raise KeyError(name)
 
 
-LANDED = ["full_attention", "full_attention_fast"]
+LANDED = ["full_attention", "full_attention_fast", "sliding_window", "sliding_window_fast"]
 
 
 def run_in_chunks(mixer, x, chunks):
@@ -57,7 +62,7 @@ def test_prefill_equals_sequential_decode(name):
     stepwise, state = run_in_chunks(mixer, x, [1] * SEQ)
     assert none_state is None
     assert torch.allclose(stepwise, parallel, atol=1e-5)
-    assert state.kv.length == SEQ
+    assert state.kv.total == SEQ
 
 
 @pytest.mark.parametrize("name", LANDED)
@@ -91,11 +96,19 @@ def test_state_bytes_per_token_is_honest(name):
     for t in range(SEQ):
         _, state = mixer(x[:, t : t + 1], state, pos_offset=t)
         used.append(state.kv.nbytes_used)
-    growth = {b - a for a, b in zip(used, used[1:], strict=False)}
-    assert growth == {mixer.state_bytes_per_token}  # the same cost for every token
+    # What the mixer claims its state costs after n tokens is what it measurably costs.
+    assert used == [mixer.state_bytes(n) for n in range(1, SEQ + 1)]
     assert used[0] == mixer.state_bytes_per_token
-    # ...and it is the KV heads that set it, not the query heads.
+    # ...and it is the KV heads that set the per-token cost, not the query heads.
     assert mixer.state_bytes_per_token == 2 * KV_HEADS * HEAD_DIM * 4
+
+    growth = [b - a for a, b in zip(used, used[1:], strict=False)]
+    if "sliding_window" in name:
+        # Grows like full attention until the window is full, then not at all.
+        assert growth[: WINDOW - 1] == [mixer.state_bytes_per_token] * (WINDOW - 1)
+        assert set(growth[WINDOW - 1 :]) == {0}
+    else:
+        assert set(growth) == {mixer.state_bytes_per_token}  # forever
 
 
 @pytest.mark.parametrize("name", LANDED)
@@ -107,7 +120,7 @@ def test_decoding_with_the_wrong_position_is_refused(name):
     x = torch.randn(1, 6, D_MODEL)
     state = mixer.init_state(1, 16)
     _, state = mixer(x[:, :5], state, pos_offset=0)
-    with pytest.raises(ValueError, match="pos_offset=0 but the cache already holds 5"):
+    with pytest.raises(ValueError, match="pos_offset=0 but the cache has already seen 5"):
         mixer(x[:, 5:], state)
     out, _ = mixer(x[:, 5:], state, pos_offset=5)
     assert torch.allclose(out, mixer(x)[0][:, 5:], atol=1e-5)

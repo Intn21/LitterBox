@@ -68,6 +68,16 @@ class TokenMixer(nn.Module, ABC):
         state (parallel/recurrent consistency).
         """
 
+    def state_bytes(self, context_len: int) -> float:
+        """Total inference state, per sequence, after ``context_len`` tokens.
+
+        The default is a state that grows forever: one ``state_bytes_per_token``
+        for every token. Mixers whose state is bounded — a sliding window, a
+        recurrent matrix — override this, and the difference between the two
+        curves is the entire case for them.
+        """
+        return self.state_bytes_per_token * context_len
+
     def init_state(
         self,
         batch_size: int,

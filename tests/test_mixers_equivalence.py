@@ -51,10 +51,30 @@ def test_full_attention_matches_sdpa(kv_heads, pos):
     assert torch.allclose(ours, ref, atol=1e-6)
 
 
-@stub
-def test_sliding_window_matches_masked_full_attention():
-    """SWA vs full attention under an explicitly banded mask."""
-    raise NotImplementedError("Milestone 2")
+@pytest.mark.parametrize("name", ["sliding_window", "sliding_window_fast"])
+@pytest.mark.parametrize("window", [1, 5, SEQ, SEQ * 4])
+def test_sliding_window_matches_masked_full_attention(name, window):
+    """SWA vs full attention under an explicitly banded mask.
+
+    The band is built here by brute force, one (query, key) pair at a time, so
+    it shares no code with the mixer's own mask."""
+    torch.manual_seed(0)
+    head_dim, kv_heads = D_MODEL // HEADS, 2
+    mixer = get_mixer(name)(
+        D_MODEL, HEADS, kv_heads, pos=RoPE(head_dim, 128, layout="half"), window=window
+    )
+    x = torch.randn(2, SEQ, D_MODEL)
+    ours, _ = mixer(x)
+
+    band = torch.tensor([[0 <= i - j < window for j in range(SEQ)] for i in range(SEQ)])
+    q = mixer.q_proj(x).view(2, SEQ, HEADS, head_dim).transpose(1, 2)
+    k = mixer.k_proj(x).view(2, SEQ, kv_heads, head_dim).transpose(1, 2)
+    v = mixer.v_proj(x).view(2, SEQ, kv_heads, head_dim).transpose(1, 2)
+    q, k = mixer.pos.rotate(q, k)
+    ref = F.scaled_dot_product_attention(q, k, v, attn_mask=band, enable_gqa=True)
+    ref = mixer.o_proj(ref.transpose(1, 2).reshape(2, SEQ, D_MODEL))
+
+    assert torch.allclose(ours, ref, atol=1e-5)
 
 
 @stub

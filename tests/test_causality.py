@@ -21,12 +21,15 @@ D_MODEL, HEADS, SEQ = 32, 4, 16
 
 def build(name):
     """One small instance of each mixer that has landed. Add a line per mixer."""
+    pos = RoPE(D_MODEL // HEADS, 64, layout="half")
     if name in ("full_attention", "full_attention_fast"):
-        return get_mixer(name)(D_MODEL, HEADS, 2, pos=RoPE(D_MODEL // HEADS, 64, layout="half"))
+        return get_mixer(name)(D_MODEL, HEADS, 2, pos=pos)
+    if name in ("sliding_window", "sliding_window_fast"):
+        return get_mixer(name)(D_MODEL, HEADS, 2, pos=pos, window=5)
     raise KeyError(name)
 
 
-LANDED = ["full_attention", "full_attention_fast"]
+LANDED = ["full_attention", "full_attention_fast", "sliding_window", "sliding_window_fast"]
 
 
 @pytest.mark.parametrize("name", LANDED)
