@@ -1,0 +1,46 @@
+# nanoGPT's train_shakespeare_char.py recipe, on this repo's loop.
+#
+#   python examples/train_tinystories.py --config configs/training/shakespeare-char.yaml \
+#       --model configs/models/shakespeare-char.yaml --prompt $'\n'
+#
+# 16,384 tokens per step over a 1.0M-token training split: one epoch every 61
+# steps, so 5,000 steps is 80 epochs. That is nanoGPT's setting and it does
+# overfit — their validation loss bottoms out near 1.47 around step 2,000 and
+# creeps up after. A logits tensor of 64 x 256 x 128 is tiny, so the whole
+# batch fits at once with no accumulation.
+training:
+  seed: 1337
+  max_steps: 5000
+  batch_size: 64
+  grad_accum_steps: 1
+  seq_len: 256
+
+  optimizer:
+    type: adamw
+    lr: 1.0e-3
+    betas: [0.9, 0.99]
+    weight_decay: 0.1
+    grad_clip: 1.0
+
+  schedule:
+    type: cosine
+    warmup_steps: 100
+    min_lr_ratio: 0.1
+
+  precision:
+    dtype: bfloat16
+    grad_dtype: float32
+
+  device: auto
+  compile: false
+
+data:
+  config: configs/data/tinyshakespeare.yaml
+
+logging:
+  backend: jsonl
+  out_dir: runs/shakespeare-char
+  log_every: 50
+  eval_every: 250
+  eval_batches: 20
+  checkpoint_every: 500

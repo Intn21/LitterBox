@@ -31,6 +31,24 @@ from litterbox.train import pick_device
 from litterbox.utils.config import ModelConfig, load_model_config
 
 
+def tokenizer_config(state: dict, override: str | None) -> dict:
+    """The tokenizer this checkpoint was trained with.
+
+    A training run records its training config, which names the data config,
+    which names the tokenizer. ``--tokenizer`` points at a data config directly
+    (for a fresh checkpoint, which trained on nothing). GPT-2's is the fallback.
+    """
+    from litterbox.data import load_data_config
+
+    if override:
+        return load_data_config(override).tokenizer
+    run_cfg = state.get("config") or {}
+    data_cfg = (run_cfg.get("data") or {}).get("config")
+    if data_cfg and Path(data_cfg).exists():
+        return load_data_config(data_cfg).tokenizer
+    return {"type": "tiktoken", "encoding": "gpt2"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("run", help="a run directory under runs/, or a .pt checkpoint")
@@ -43,6 +61,7 @@ def main() -> None:
     parser.add_argument("--greedy", action="store_true", help="always take the likeliest token")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--check", action="store_true", help="verify against cache-free generation")
+    parser.add_argument("--tokenizer", help="a data config whose tokenizer to use")
     parser.add_argument("--device", default="auto")
     args = parser.parse_args()
 
@@ -72,7 +91,7 @@ def main() -> None:
     device = pick_device(args.device)
     model.to(device).eval()
 
-    tokenizer = build_tokenizer({"type": "tiktoken", "encoding": "gpt2"})
+    tokenizer = build_tokenizer(tokenizer_config(state, args.tokenizer))
     prompt = torch.tensor([tokenizer.encode(args.prompt)] * args.n, device=device)
     budget = cfg.max_seq_len - prompt.shape[1]
     tokens = min(args.tokens, budget)

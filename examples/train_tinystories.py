@@ -7,7 +7,10 @@ Run it::
     python examples/train_tinystories.py training.max_steps=300 logging.out_dir=runs/smoke
     python examples/train_tinystories.py model.tier=fast training.compile=true      # on CUDA
 
-The model comes from ``--model``, a YAML under ``configs/models/``. Swapping the
+The model comes from ``--model``, a YAML under ``configs/models/``, and the
+training recipe and corpus from ``--config``. The name is historical: with
+``--config configs/training/shakespeare-char.yaml`` it trains on Tiny
+Shakespeare at the character level instead. Swapping the
 token mixer — full attention, sliding window, a hybrid of the two — is choosing a
 different file; nothing in this script, the loop, or generation changes.
 
@@ -35,7 +38,7 @@ from litterbox.model import build_model
 from litterbox.train import load_run_config, train
 from litterbox.utils.config import load_model_config
 
-PROMPT = "Once upon a time"
+DEFAULT_PROMPT = "Once upon a time"
 
 
 def main() -> None:
@@ -43,6 +46,7 @@ def main() -> None:
     parser.add_argument("--config", default="configs/training/tinystories-small.yaml")
     parser.add_argument("--model", default="configs/models/tinystories-dense.yaml")
     parser.add_argument("--fresh", action="store_true", help="ignore any existing checkpoint")
+    parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="what each sample starts from")
     parser.add_argument("overrides", nargs="*", help="e.g. training.max_steps=300 model.tier=fast")
     args = parser.parse_args()
 
@@ -69,7 +73,7 @@ def main() -> None:
 
     def show_sample(step: int, model: torch.nn.Module) -> None:
         device = next(model.parameters()).device
-        prompt = torch.tensor([tokenizer.encode(PROMPT)], device=device)
+        prompt = torch.tensor([tokenizer.encode(args.prompt)], device=device)
         out = generate(
             model,
             prompt,
@@ -80,7 +84,7 @@ def main() -> None:
             eos_id=tokenizer.eos_id,
             generator=torch.Generator().manual_seed(step),
         )
-        text = tokenizer.decode(out[0].tolist()).replace("\n", " ")
+        text = tokenizer.decode(out[0].tolist()).replace("\n", " | ")
         print(f"         sample: {text}\n")
 
     result = train(model, cfg, tokenizer=tokenizer, resume=not args.fresh, on_eval=show_sample)

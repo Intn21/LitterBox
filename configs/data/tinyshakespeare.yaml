@@ -1,0 +1,16 @@
+# Tiny Shakespeare at the character level — nanoGPT's shakespeare_char setup.
+#
+#   python examples/prepare_shakespeare.py            # downloads and splits 90/10
+#   litterbox-pack configs/data/tinyshakespeare.yaml  # ~1.1M tokens, instant
+#
+# The char tokenizer's default alphabet is printable ASCII, which covers all 65
+# characters in the file. It has no EOS token, so the two files pack as two
+# uninterrupted streams — exactly what a single continuous text wants.
+description: Tiny Shakespeare, one token per character
+out_dir: data/tinyshakespeare-char
+
+tokenizer: {type: char}
+
+splits:
+  train: {type: files, pattern: "train.txt", root: data/raw/tinyshakespeare}
+  val:   {type: files, pattern: "val.txt",   root: data/raw/tinyshakespeare}
