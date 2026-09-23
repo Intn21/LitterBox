@@ -7,10 +7,10 @@ scratch to explain how it works. These scripts assume it works and show you the
 API. Reach for `demo/` to learn byte-pair encoding; reach for here to find out
 how to swap one tokenizer for another.
 
-The first two run standalone with no arguments and no network:
+Most run standalone with no arguments and no network. The quickest tour of the whole stack:
 
 ```bash
-python examples/tokenizers.py
+python examples/fresh_model.py
 ```
 
 Optional backends degrade to a printed note rather than an error, so nothing
@@ -20,6 +20,7 @@ here requires the full dependency set.
 
 | Script | Shows |
 |---|---|
+| [fresh_model.py](fresh_model.py) | The whole stack on an untrained model, in seconds, with nothing downloaded: build from YAML, a forward pass that lands at `ln(vocab)`, generation (nonsense, on purpose), the KV cache matching cache-free generation, and the mixer swapped across three configs with the cache profile changing and nothing else |
 | [tokenizers.py](tokenizers.py) | Building tokenizers from config, why special tokens are data rather than behaviour, comparing compression and segmentation, and registering an algorithm of your own |
 | [data_pipeline.py](data_pipeline.py) | Text to training batches: packing into shards, what the metadata sidecar is for, deterministic batching, and what reading actually costs. `--big` for a 200MB run |
 | [train_tinystories.py](train_tinystories.py) | The whole path end to end: pack TinyStories from a data config, assemble a small dense model, train it with the hand-written loop, and print a story at every evaluation. Needs the network once, to fetch the corpus. Resumes from its last checkpoint; picks CUDA, then Apple's GPU, then CPU |
