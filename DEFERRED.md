@@ -216,6 +216,42 @@ exists for.
 norm, so no seam has one implementation behind it — then step 6, linear
 attention, whose state is not a cache at all.
 
+### Dropout
+
+The block has none: no option on either residual branch, none in attention.
+Every current large model trains without it, so it was not missed until the
+first small-corpus run.
+
+**What it cost.** `experiments/2026-09-23-shakespeare-char-no-dropout/` runs
+nanoGPT's Tiny Shakespeare recipe, whose only regulariser is `dropout = 0.2`.
+Without it the validation minimum arrives at step 500 instead of ~2,000, and by
+step 5,000 the model recites the plays: 81% of sampled lines are verbatim
+training text.
+
+**Trigger.** Any run where the model can hold the corpus — parameters within an
+order of magnitude of training tokens. That is every character-level toy, and
+none of the pretraining configs, which is why the default should stay zero.
+**Cost later.** Low. A `dropout` field on `ModelConfig`, `nn.Dropout` after each
+branch's final projection in the block, and the loop already toggles
+`train()`/`eval()`. The one care point: generation and the state-consistency
+tests must run in eval mode, or the cache oracle stops being exact.
+
+### Keeping the best checkpoint
+
+`train()` writes `latest.pt` every `checkpoint_every` steps and nothing else.
+When validation loss rises — as it does on any run that overfits — the model
+worth keeping is the one from before it did, and it has been overwritten.
+
+**What it cost.** The Shakespeare run's best checkpoint (step 500, val 1.52)
+was gone by the time the rise was clear at step 1,000; the run's result is the
+step-1,000 copy taken by hand (val 1.84). Second time in the repo that "latest"
+was the wrong thing to keep.
+
+**Trigger.** Now, before the next run on a small corpus.
+**Cost later.** Trivial: also write `best.pt` whenever the validation loss
+improves, and have `generate.py` prefer it. Keeping every checkpoint is the
+other option and costs disk, 128 MB each here.
+
 ### `positions` tensor instead of `pos_offset: int`
 
 `TokenMixer.forward` takes `pos_offset: int`, which assumes positions are

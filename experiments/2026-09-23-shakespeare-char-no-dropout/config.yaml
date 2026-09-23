@@ -1,0 +1,59 @@
+# Resolved at run time.
+training_config:
+  training:
+    seed: 1337
+    max_steps: 5000
+    batch_size: 64
+    grad_accum_steps: 1
+    seq_len: 256
+    optimizer:
+      type: adamw
+      lr: 0.001
+      betas:
+      - 0.9
+      - 0.99
+      weight_decay: 0.1
+      eps: 1.0e-08
+      grad_clip: 1.0
+    schedule:
+      type: cosine
+      warmup_steps: 100
+      min_lr_ratio: 0.1
+    precision:
+      dtype: bfloat16
+      grad_dtype: float32
+    device: auto
+    compile: false
+  data:
+    config: configs/data/tinyshakespeare.yaml
+  logging:
+    backend: jsonl
+    out_dir: runs/shakespeare-char
+    log_every: 50
+    eval_every: 250
+    eval_batches: 20
+    checkpoint_every: 500
+data_config: configs/data/tinyshakespeare.yaml (fingerprint c7daa3039f61e07a)
+model_config:
+  d_model: 384
+  n_layers: 6
+  vocab_size: 128
+  max_seq_len: 256
+  layer_pattern:
+  - mixer: full_attention
+    pos: rope
+    heads: 6
+    kv_heads: 6
+  mlp:
+    type: swiglu
+    hidden_mult: 4.0
+  norm:
+    type: rmsnorm
+    eps: 1.0e-05
+  rope:
+    layout: half
+    base: 10000.0
+  pos: null
+  tie_embeddings: true
+  scale_residual_init: true
+  tier: reference
