@@ -8,8 +8,9 @@ Run it::
     python examples/generate.py runs/tinystories-dense --seed 1 --n 3
 
 The first argument is a run directory (containing ``latest.pt``) or a checkpoint
-file. The model's shape comes from a model config; by default that is
-``configs/models/<run name>.yaml``, and ``--model`` overrides it.
+file. The model's shape comes from the checkpoint if it recorded its config
+(``init_checkpoint.py`` does), else from ``configs/models/<run name>.yaml``;
+``--model`` overrides both.
 
 Generation goes through the KV cache. ``--check`` also runs the cache-free
 oracle and confirms the two agree token for token.
@@ -26,8 +27,8 @@ import torch
 from litterbox.data.tokenizer import build_tokenizer
 from litterbox.infer import generate, generate_uncached
 from litterbox.model import build_model
-from litterbox.train import load_checkpoint, pick_device
-from litterbox.utils.config import load_model_config
+from litterbox.train import pick_device
+from litterbox.utils.config import ModelConfig, load_model_config
 
 
 def main() -> None:
@@ -49,16 +50,25 @@ def main() -> None:
     ckpt = run if run.suffix == ".pt" else run / "latest.pt"
     if not ckpt.exists():
         raise SystemExit(f"no checkpoint at {ckpt}")
-    model_cfg_path = Path(args.model) if args.model else Path("configs/models") / f"{run.stem}.yaml"
-    if not model_cfg_path.exists():
-        raise SystemExit(
-            f"no model config at {model_cfg_path}; pass --model with the config this run was "
-            f"trained with"
-        )
+    state = torch.load(ckpt, map_location="cpu", weights_only=True)
+    if args.model:
+        cfg = load_model_config(args.model)
+    elif state.get("model_config") is not None:
+        cfg = ModelConfig.model_validate(state["model_config"])  # recorded by init_checkpoint.py
+    else:
+        # A training run records its training config, not its model config, so
+        # fall back to the model file that shares the run's name.
+        model_cfg_path = Path("configs/models") / f"{run.stem}.yaml"
+        if not model_cfg_path.exists():
+            raise SystemExit(
+                f"no model config at {model_cfg_path}; pass --model with the config this run "
+                f"was trained with"
+            )
+        cfg = load_model_config(model_cfg_path)
 
-    cfg = load_model_config(model_cfg_path)
     model = build_model(cfg)
-    step = load_checkpoint(ckpt, model)
+    model.load_state_dict(state["model"])
+    step = int(state["step"])
     device = pick_device(args.device)
     model.to(device).eval()
 

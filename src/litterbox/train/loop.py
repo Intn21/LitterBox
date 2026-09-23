@@ -226,8 +226,8 @@ def load_checkpoint(path: str | Path, model: nn.Module, optimizer=None) -> int:
     """
     state = torch.load(path, map_location="cpu", weights_only=True)
     model.load_state_dict(state["model"])
-    if optimizer is not None:
-        optimizer.load_state_dict(state["optimizer"])
+    if optimizer is not None and state.get("optimizer") is not None:
+        optimizer.load_state_dict(state["optimizer"])  # absent on a fresh, step-0 checkpoint
     return int(state["step"])
 
 
