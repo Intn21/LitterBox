@@ -112,7 +112,11 @@ The block must never learn what it is holding. The moment it grows an
 > validation at 2.51, and it writes: *"Once upon a time, there was a little
 > girl named Lily. She loved to play outside with her toys…"*
 >
-> Not yet run on CUDA — see *Untested on CUDA* in [DEFERRED.md](DEFERRED.md).
+> On CUDA too: an RTX 4090 (CUDA 13.2 driver, PyTorch 2.13.0+cu130) trains the
+> same model at 142k tokens/s, 238k with `model.tier=fast training.compile=true`,
+> with matching loss curves. The full 5,000-step recipe (82M tokens) takes 6.5
+> minutes and reaches validation 1.78, and the checkpoint generates on a Mac
+> with cached and cache-free output identical.
 
 ### Step 3 — It generates
 

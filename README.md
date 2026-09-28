@@ -12,8 +12,8 @@ written out by hand, so that each technique is as legible as it is runnable.
 > one unchanged code path, and so do the MLP and the norm. 293 tests.
 >
 > Not there yet: the linear-attention family, DSA, MLA, and the eval harness are
-> stubs, so nothing is *benchmarked*; and everything so far has run on a laptop,
-> never on CUDA. [ROADMAP.md](ROADMAP.md) has the order things land in,
+> stubs, so nothing is *benchmarked*; and CUDA has been tried on one card only (an
+> RTX 4090, TinyStories). [ROADMAP.md](ROADMAP.md) has the order things land in,
 > [DEFERRED.md](DEFERRED.md) what is deliberately not built yet and why.
 
 ---

@@ -266,24 +266,6 @@ each must restart at position 0. An int cannot express that.
 
 ## Training
 
-### Untested on CUDA
-
-The loop was written for CUDA and has only ever run on Apple's GPU and the CPU,
-because that is the hardware it was written on. Three paths are therefore
-reasoned about rather than exercised: TF32 matmuls
-(`set_float32_matmul_precision("high")`), `training.compile`, and
-`PackedDataset`'s pinned-memory transfer.
-
-**Insurance paid.** Nothing names a device: tensors follow the model and the
-batch, and the model was run end to end on a non-CPU backend, which fails the
-same way CUDA does when a tensor is created on the wrong device. Checkpoints
-load through the CPU, so a run started on one kind of machine opens on another.
-RoPE's tables are pinned to fp32 through model-wide casts.
-
-**Trigger.** The first session on a CUDA machine. Run the suite, then
-`examples/train_tinystories.py training.compile=true` for a few hundred steps,
-and delete this entry.
-
 ### Windowed attention that is cheap to *train*
 
 Sliding-window attention saves memory at inference, where its cache stops
