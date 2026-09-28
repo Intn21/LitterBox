@@ -202,8 +202,8 @@ YaRN, the training-side data and distributed adapters, and the whole eval
 harness.
 
 What stands: the positional strategies; full attention and sliding-window
-attention, each in two tiers with its inference path; RMSNorm, SwiGLU, the block
-and the backbone; model configs with layer-pattern tiling; data configs and
+attention, each in two tiers with its inference path; RMSNorm and LayerNorm;
+SwiGLU and a GELU MLP; the block and the backbone; model configs with layer-pattern tiling; data configs and
 packing; the training loop; both KV caches; and cached generation. A dense model,
 a sliding-window model and a 3:1 hybrid of the two train from one code path with
 only the YAML differing.
@@ -212,9 +212,8 @@ An earlier full implementation was written and then **deliberately reverted**
 (`31ad17a`, reverted by `ff7eb66`) — building it is the practice this project
 exists for.
 
-**Trigger.** Now. Step 5 in [ROADMAP.md](ROADMAP.md) — a second MLP and a second
-norm, so no seam has one implementation behind it — then step 6, linear
-attention, whose state is not a cache at all.
+**Trigger.** Now. Step 6 in [ROADMAP.md](ROADMAP.md) — linear attention, whose
+state is not a cache at all.
 
 ### Dropout
 
@@ -369,7 +368,7 @@ ablation.
 
 There are three separate registry implementations: `model/registry.py`,
 `data/tokenizer/base.py`, and `data/source.py`. MLPs and norms have none — with
-one implementation each, `model/build.py` resolves them from two small dicts.
+two implementations each, `model/build.py` resolves them from two small dicts.
 
 **Why deferred.** Each registry is ~30 lines and local. Unifying them means
 touching model code from data code, or introducing a shared `utils/registry.py`
@@ -377,9 +376,9 @@ and migrating all three. Not worth the churn while the interfaces are still
 moving.
 
 **Trigger.** A fourth registry, or a change that has to be made in all three.
-ROADMAP step 5 adds a second MLP and a second norm; two entries in a dict is
-still a dict, but if either grows a third, or wants registration from outside
-`build.py`, that is the fourth registry and this fires.
+Two entries in a dict is still a dict, but if the MLPs or norms grow a third,
+or want registration from outside `build.py`, that is the fourth registry and
+this fires.
 **Cost later.** Low, and mechanical.
 
 ### `transformers` is not tested in CI

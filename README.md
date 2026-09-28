@@ -9,7 +9,7 @@ written out by hand, so that each technique is as legible as it is runnable.
 > YAML file, trains on TinyStories with a hand-written loop, and generates from a
 > KV cache. **Swapping the token mixer is a config edit:** full attention,
 > sliding-window attention, and a 3:1 hybrid of the two train and generate from
-> one unchanged code path. 275 tests.
+> one unchanged code path, and so do the MLP and the norm. 293 tests.
 >
 > Not there yet: the linear-attention family, DSA, MLA, and the eval harness are
 > stubs, so nothing is *benchmarked*; and everything so far has run on a laptop,
@@ -37,7 +37,7 @@ to be *understood*.
 ```bash
 git clone https://github.com/Intn21/LitterBox.git && cd LitterBox
 uv sync --extra dev --extra demo        # or: pip install -e ".[dev,demo]"
-pytest                                  # 275 pass; 5 xfail mark mixers not written yet
+pytest                                  # 293 pass; 5 xfail mark mixers not written yet
 ```
 
 Pack a corpus, train a model, then swap its token mixer by naming a different file:
@@ -68,8 +68,8 @@ stand:
 |---|---|---|
 | Token mixer | full attention (MHA / GQA / MQA), sliding window — each in a reference and a fused tier | linear attention, DeltaNet, Gated DeltaNet, DSA, MLA |
 | Positional | RoPE (both layouts), NoPE, learned table, sinusoidal (fixed or trainable) | YaRN |
-| Channel mixer | SwiGLU | a second one (step 5) |
-| Norm | RMSNorm | a second one (step 5) |
+| Channel mixer | SwiGLU, plain GELU MLP | — |
+| Norm | RMSNorm, LayerNorm | — |
 | Inference state | a growing KV cache, a rolling one that stops at the window | a fixed-size recurrent state (step 6) |
 | Tokenizer | tiktoken, HuggingFace, SentencePiece, byte, char | a packaged BPE of your own |
 | Data source | the Hub, local text, JSONL, anything `datasets` opens | — |
@@ -258,7 +258,7 @@ ordering is noise until repeated; and whether a hybrid *recovers* what a window
 configs/          models, training, data, eval — composition happens here
 src/litterbox/
   data/           tokenizers, lazy text sources, packing, data configs (litterbox-pack)
-  model/          backbone, block, RMSNorm, SwiGLU, mixer registry, config -> model builder
+  model/          backbone, block, norms, MLPs, mixer registry, config -> model builder
   model/mixers/   reference/ (readable, the oracle) and fast/ (fused twins)
   positional/     rope, nope, learned, sinusoidal — behind one two-hook seam
   train/          the single-device loop
@@ -333,7 +333,7 @@ techniques the repo is about.
 
 | Tool | Role here |
 |---|---|
-| PyTorch SDPA / `nn.RMSNorm` | Oracles for the hand-written attention and norm; SDPA is also the fast tier |
+| PyTorch SDPA / `nn.RMSNorm` / `nn.LayerNorm` | Oracles for the hand-written attention and norms; SDPA is also the fast tier |
 | tiktoken / HF tokenizers / `datasets` | Real tokenizers and corpora, behind the repo's own interfaces |
 | nanoGPT / litGPT | Style reference for readability; a loss-curve oracle for when claims are being made, not before |
 | flash-linear-attention | Numerical oracle for the DeltaNet family; later, an optional fast-tier backend |

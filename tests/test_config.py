@@ -115,8 +115,10 @@ def test_schema_refuses_what_it_cannot_mean():
         small(layer_pattern=[{**FULL, "mixer": "full_attn"}], n_layers=1)
     with pytest.raises(ValidationError, match="not divisible by heads=5"):
         small(layer_pattern=[{**FULL, "heads": 5}], n_layers=1)
-    with pytest.raises(ValidationError, match="gelu"):
-        small(mlp={"type": "gelu"})
+    with pytest.raises(ValidationError, match="geglu"):
+        small(mlp={"type": "geglu"})
+    with pytest.raises(ValidationError, match="batchnorm"):
+        small(norm={"type": "batchnorm"})
 
 
 def test_an_additive_strategy_named_per_layer_points_at_the_right_place():
@@ -130,6 +132,58 @@ def test_a_misspelled_mixer_argument_fails_at_build_naming_the_layer():
     cfg = small(layer_pattern=[FULL, {**SWA, "windw": 8}], n_layers=2)
     with pytest.raises(TypeError, match=r"layer 1 \(sliding_window\)"):
         build_model(cfg)
+
+
+# ------------------------------------------------------ the other compartments
+
+MLP_NORM = [(m, n) for m in ("swiglu", "gelu") for n in ("rmsnorm", "layernorm")]
+
+
+@pytest.mark.parametrize("mlp,norm", MLP_NORM, ids=[f"{m}-{n}" for m, n in MLP_NORM])
+def test_every_mlp_and_norm_builds_and_generates_from_the_same_code(mlp, norm):
+    """ROADMAP step 5: the channel mixer and the norm are compartments, not
+    constants. Each pairing is a config edit, and the hybrid built from it
+    starts at chance and generates from its caches exactly what it generates
+    without them."""
+    torch.manual_seed(0)
+    model = build_model(small(mlp={"type": mlp}, norm={"type": norm}))
+    kinds = {type(m).__name__ for m in model.modules()}
+    assert {"SwiGLU": mlp == "swiglu", "GeluMLP": mlp == "gelu"} == {
+        k: k in kinds for k in ("SwiGLU", "GeluMLP")
+    }
+    assert ("LayerNorm" in kinds) == (norm == "layernorm")
+    assert ("RMSNorm" in kinds) == (norm == "rmsnorm")
+
+    ids = torch.randint(0, 64, (2, 24))
+    with torch.no_grad():
+        logits = model(ids[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), ids[:, 1:].flatten())
+    assert abs(loss.item() - torch.log(torch.tensor(64.0)).item()) < 0.1
+
+    prompt = ids[:, :6]
+    cached = generate(model, prompt, 30, max_context=48, temperature=0)
+    assert torch.equal(cached, generate_uncached(model, prompt, 30, max_context=48, temperature=0))
+
+
+def test_depth_scaled_init_refuses_a_branch_that_did_not_opt_in(monkeypatch):
+    """scale_residual_projections finds output projections by a flag. A branch
+    without it would keep its unscaled init silently; the builder says which."""
+    import torch.nn as nn
+
+    from litterbox.model import build as build_module
+
+    class Unmarked(nn.Module):
+        def __init__(self, d):
+            super().__init__()
+            self.up, self.down = nn.Linear(d, 2 * d), nn.Linear(2 * d, d)
+
+        def forward(self, x):
+            return self.down(self.up(x).relu())
+
+    monkeypatch.setitem(build_module.MLPS, "swiglu", lambda cfg: Unmarked(cfg.d_model))
+    with pytest.raises(ValueError, match=r"expected 8; unmarked: layer 0 mlp \(Unmarked\)"):
+        build_model(small())  # scale_residual_init is on by default
+    build_model(small(scale_residual_init=False))  # off, there is nothing to check
 
 
 # ------------------------------------------------------------- builder options

@@ -44,18 +44,24 @@ TRIO = ["tinystories-dense", "tinystories-swa", "tinystories-swa-hybrid"]
 SHRINK = ["d_model=64", "vocab_size=64", "max_seq_len=64"]
 
 
-@pytest.mark.parametrize("name", TRIO)
-def test_every_model_config_overfits_one_batch(name):
+@pytest.mark.parametrize(
+    "name,extra",
+    [(name, []) for name in TRIO]
+    + [("tinystories-dense", ["mlp.type=gelu", "norm.type=layernorm"])],
+    ids=[*TRIO, "tinystories-dense-gelu-layernorm"],
+)
+def test_every_model_config_overfits_one_batch(name, extra):
     """ROADMAP step 4's condition, in miniature: three configs, one code path.
 
     Everything below this line is identical for all three. The YAML chooses the
     mixers; building, the forward pass, the loss and the optimizer never learn
-    which ones they got."""
+    which ones they got. The last case swaps the MLP and the norm by override,
+    ROADMAP step 5's version of the same claim."""
     from litterbox.model import build_model
     from litterbox.utils.config import load_model_config
 
     torch.manual_seed(0)
-    model = build_model(load_model_config(CONFIG_DIR / f"{name}.yaml", SHRINK))
+    model = build_model(load_model_config(CONFIG_DIR / f"{name}.yaml", SHRINK + extra))
     seq = torch.randint(0, 64, (4, 49))
     x, y = seq[:, :-1], seq[:, 1:]
     opt = torch.optim.AdamW(model.parameters(), lr=3e-3)

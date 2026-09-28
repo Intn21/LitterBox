@@ -1,6 +1,7 @@
-"""RMSNorm and SwiGLU: oracles, defining properties, and the per-token guarantee.
+"""The norms and the MLPs: oracles, defining properties, and the per-token guarantee.
 
-Both layers are position-wise — they act on each token's vector alone. That is
+Two of each — RMSNorm and LayerNorm, SwiGLU and the plain GELU MLP. All four
+are position-wise — they act on each token's vector alone. That is
 what lets a block stay causal: only the token mixer may move information
 between positions, so everything else must provably move none.
 """
@@ -10,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from litterbox.model import RMSNorm, SwiGLU
+from litterbox.model import GeluMLP, LayerNorm, RMSNorm, SwiGLU
 from litterbox.model.mlp import swiglu_hidden_dim
 
 D_MODEL, SEQ = 48, 10
@@ -91,6 +92,70 @@ def test_rmsnorm_keeps_dtype_but_reduces_in_fp32():
     assert torch.allclose(y.float(), torch.ones(1, 1, D_MODEL), atol=1e-3)
 
 
+# ----------------------------------------------------------------- LayerNorm
+
+
+def test_layernorm_matches_torch():
+    torch.manual_seed(0)
+    ours, ref = LayerNorm(D_MODEL, eps=1e-5), nn.LayerNorm(D_MODEL, eps=1e-5)
+    with torch.no_grad():
+        gain, bias = torch.randn(D_MODEL), torch.randn(D_MODEL)
+        ours.gain.copy_(gain)
+        ours.bias.copy_(bias)
+        ref.weight.copy_(gain)
+        ref.bias.copy_(bias)
+    x = torch.randn(3, SEQ, D_MODEL) * 7.0 + 2.0
+    assert torch.allclose(ours(x), ref(x), atol=1e-5)
+
+
+def test_layernorm_on_the_docstring_example():
+    y = LayerNorm(4, eps=0.0)(torch.tensor([1.0, 2.0, 3.0, 6.0]))
+    assert torch.allclose(y, torch.tensor([-1.069, -0.535, 0.0, 1.604]), atol=1e-3)
+
+
+def test_layernorm_ignores_scale_and_shift():
+    """Where RMSNorm ignores only scale: subtracting the mean first removes any
+    constant added to every channel."""
+    torch.manual_seed(0)
+    x = torch.randn(2, SEQ, D_MODEL)
+    norm = LayerNorm(D_MODEL, eps=1e-8)
+    assert torch.allclose(norm(x * 50.0), norm(x), atol=1e-5)
+    assert torch.allclose(norm(x + 3.0), norm(x), atol=1e-5)
+    y = norm(x)
+    assert torch.allclose(y.mean(-1), torch.zeros(2, SEQ), atol=1e-5)
+    assert torch.allclose(y.var(-1, unbiased=False), torch.ones(2, SEQ), atol=1e-3)
+
+
+def test_layernorm_gain_starts_at_one_bias_at_zero_and_both_learn():
+    norm = LayerNorm(D_MODEL)
+    assert torch.equal(norm.gain.detach(), torch.ones(D_MODEL))
+    assert torch.equal(norm.bias.detach(), torch.zeros(D_MODEL))
+    norm(torch.randn(2, SEQ, D_MODEL)).pow(3).sum().backward()
+    for p in (norm.gain, norm.bias):
+        assert p.grad is not None and p.grad.abs().sum() > 0
+    assert [n for n, _ in LayerNorm(D_MODEL, bias=False).named_parameters()] == ["gain"]
+
+
+def test_layernorm_constant_vector_stays_finite():
+    """A constant vector has zero variance, so it is all mean: centering leaves
+    zeros, and eps keeps the division finite — the output is the bias."""
+    norm = LayerNorm(D_MODEL)
+    with torch.no_grad():
+        norm.bias.fill_(0.5)
+    y = norm(torch.full((1, 2, D_MODEL), 4.0))
+    assert torch.equal(y, torch.full_like(y, 0.5))
+
+
+def test_layernorm_keeps_dtype_but_reduces_in_fp32():
+    norm = LayerNorm(D_MODEL).half()
+    x = torch.linspace(-300, 300, D_MODEL, dtype=torch.float16).expand(1, 1, D_MODEL)
+    assert x.pow(2).isinf().any()  # the naive variance would already be lost
+    y = norm(x)
+    assert y.dtype == torch.float16 and y.isfinite().all()
+    ref = nn.functional.layer_norm(x.float(), (D_MODEL,), eps=1e-5)
+    assert torch.allclose(y.float(), ref, atol=1e-2)
+
+
 # -------------------------------------------------------------------- SwiGLU
 
 
@@ -143,10 +208,51 @@ def test_swiglu_gradient_reaches_all_three_matrices():
         assert grad is not None and grad.abs().sum() > 0, name
 
 
-# ------------------------------------------------- both: strictly per token
+# ------------------------------------------------------------------ GELU MLP
 
 
-@pytest.mark.parametrize("make", [lambda: RMSNorm(D_MODEL), lambda: SwiGLU(D_MODEL)])
+def test_gelu_mlp_matches_the_gelu_oracle():
+    torch.manual_seed(0)
+    mlp = GeluMLP(D_MODEL)
+    x = torch.randn(3, SEQ, D_MODEL)
+    ref = mlp.down_proj(F.gelu(mlp.up_proj(x)))  # the exact, erf-based GELU
+    assert torch.allclose(mlp(x), ref, atol=1e-6)
+    assert mlp(x).shape == x.shape
+
+
+def test_gelu_mlp_costs_what_a_swiglu_of_the_same_hidden_mult_costs():
+    """hidden_mult is a budget: 4x wide with two matrices, or 8/3x with three."""
+    mlp = GeluMLP(768, hidden_mult=4)
+    assert mlp.hidden_dim == 4 * 768
+    n_params = sum(p.numel() for p in mlp.parameters())
+    assert n_params == sum(p.numel() for p in SwiGLU(768, hidden_mult=4).parameters())
+    assert GeluMLP(768, hidden_dim=1000).hidden_dim == 1000
+
+
+def test_gelu_mlp_has_two_matrices_and_no_biases():
+    names = sorted(n for n, _ in GeluMLP(D_MODEL).named_parameters())
+    assert names == ["down_proj.weight", "up_proj.weight"]
+    assert len(list(GeluMLP(D_MODEL, bias=True).parameters())) == 4
+
+
+def test_gelu_mlp_marks_its_output_projection_for_depth_scaling():
+    assert GeluMLP(D_MODEL).down_proj.residual_out
+    assert not getattr(GeluMLP(D_MODEL).up_proj, "residual_out", False)
+
+
+# -------------------------------------------------- all four: strictly per token
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: RMSNorm(D_MODEL),
+        lambda: LayerNorm(D_MODEL),
+        lambda: SwiGLU(D_MODEL),
+        lambda: GeluMLP(D_MODEL),
+    ],
+    ids=["rmsnorm", "layernorm", "swiglu", "gelu"],
+)
 def test_no_information_moves_between_positions(make):
     """Perturb one token; every other token's output must be bit-identical,
     in both directions. If this ever fails, a 'position-wise' layer is leaking

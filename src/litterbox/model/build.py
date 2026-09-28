@@ -14,19 +14,23 @@ from collections.abc import Callable
 import torch.nn as nn
 
 from litterbox.model.block import TransformerBlock, scale_residual_projections
-from litterbox.model.mlp import SwiGLU
-from litterbox.model.norm import RMSNorm
+from litterbox.model.mlp import GeluMLP, SwiGLU
+from litterbox.model.norm import LayerNorm, RMSNorm
 from litterbox.model.registry import available_mixers, get_mixer
 from litterbox.model.transformer import Transformer
 from litterbox.positional import Learned, NoPE, PositionalEncoding, RoPE, Sinusoidal
 from litterbox.utils.config import LayerConfig, ModelConfig
 
-# One implementation behind each today; ROADMAP step 5 adds a second to both.
+# Two implementations behind each, so neither compartment is a hypothesis. A
+# third, or registration from outside this file, is the trigger for a registry
+# (DEFERRED.md, *Registry unification*).
 MLPS: dict[str, Callable[[ModelConfig], nn.Module]] = {
     "swiglu": lambda cfg: SwiGLU(cfg.d_model, cfg.mlp.hidden_mult),
+    "gelu": lambda cfg: GeluMLP(cfg.d_model, cfg.mlp.hidden_mult),
 }
 NORMS: dict[str, Callable[[ModelConfig], nn.Module]] = {
     "rmsnorm": lambda cfg: RMSNorm(cfg.d_model, cfg.norm.eps),
+    "layernorm": lambda cfg: LayerNorm(cfg.d_model, cfg.norm.eps),
 }
 
 
@@ -76,7 +80,24 @@ def build_model(cfg: ModelConfig) -> Transformer:
     """Instantiate the model a config describes."""
     blocks = [build_block(layer, cfg, i) for i, layer in enumerate(cfg.layers)]
     if cfg.scale_residual_init:
-        scale_residual_projections(blocks)
+        rescaled = scale_residual_projections(blocks)
+        if rescaled != 2 * len(blocks):
+            # A branch that forgot `residual_out = True` would otherwise keep its
+            # unscaled init without a word — a different model, silently.
+            unmarked = [
+                f"layer {i} {branch} ({type(getattr(block, branch)).__name__})"
+                for i, block in enumerate(blocks)
+                for branch in ("mixer", "mlp")
+                if not any(
+                    getattr(m, "residual_out", False) for m in getattr(block, branch).modules()
+                )
+            ]
+            culprits = ", ".join(unmarked) or "none (a branch marks two)"
+            raise ValueError(
+                f"scale_residual_init rescaled {rescaled} output projections, expected "
+                f"{2 * len(blocks)}; unmarked: {culprits}. "
+                "Set `residual_out = True` on each branch's final nn.Linear."
+            )
 
     pos: PositionalEncoding | None = None
     if cfg.pos is not None:

@@ -1,5 +1,5 @@
-"""Channel mixers: the feed-forward half of a block. SwiGLU today; a second one
-joins it in ROADMAP step 5.
+"""Channel mixers: the feed-forward half of a block. SwiGLU, and the plain GELU
+MLP it replaced.
 
 A block has two halves. The token mixer (attention) moves information *between
 positions*. The channel mixer moves information *between channels, within one
@@ -29,10 +29,23 @@ Shazeer's paper offers no theory for why it helps — "we attribute their
 success, as all else, to divine benevolence" — but it has held up, and Llama,
 Mistral, Qwen, and PaLM all use it.
 
-Oracle: the same expression written with torch.nn.functional.silu
+The plain MLP is kept as the second implementation, and as the one GPT-2 and
+nanoGPT use. Its activation is GELU:
+
+    gelu(z) = z · Φ(z)           Φ = the standard normal CDF
+
+which, like SiLU, is ~0 for very negative z and ~z for very positive z, with a
+smooth dip in between. The difference from SwiGLU is not the curve but the gate:
+here each hidden channel switches on its own value, with nothing learned deciding
+for it.
+
+Oracles: the same expressions written with torch.nn.functional.silu and
+torch.nn.functional.gelu
 """
 
 from __future__ import annotations
+
+import math
 
 import torch
 import torch.nn as nn
@@ -96,6 +109,50 @@ class SwiGLU(nn.Module):
         gate = z * torch.sigmoid(z)  # SiLU, written out: ~0 when z << 0, ~z when z >> 0
         content = self.up_proj(x)  # [..., hidden]
         return self.down_proj(gate * content)  # [..., d_model]
+
+    def extra_repr(self) -> str:
+        return f"d_model={self.d_model}, hidden_dim={self.hidden_dim}"
+
+
+class GeluMLP(nn.Module):
+    """The classic two-matrix feed-forward layer, GELU between them.
+
+    Args:
+        d_model: width in and out.
+        hidden_mult: hidden width as a multiple of ``d_model``. Taken literally
+            here — no 2/3 correction — so the same ``hidden_mult`` gives this
+            and :class:`SwiGLU` the same parameter budget.
+        hidden_dim: set the hidden width directly, overriding ``hidden_mult``.
+        bias: add biases to the two projections. Off, matching :class:`SwiGLU`.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        hidden_mult: float = 4.0,
+        *,
+        hidden_dim: int | None = None,
+        bias: bool = False,
+    ) -> None:
+        super().__init__()
+        if hidden_dim is None:
+            hidden_dim = int(hidden_mult * d_model)
+        self.d_model = d_model
+        self.hidden_dim = hidden_dim
+
+        self.up_proj = nn.Linear(d_model, hidden_dim, bias=bias)
+        self.down_proj = nn.Linear(hidden_dim, d_model, bias=bias)
+        self.down_proj.residual_out = True  # see model.block.scale_residual_projections
+        for proj in (self.up_proj, self.down_proj):
+            nn.init.normal_(proj.weight, mean=0.0, std=0.02)
+            if proj.bias is not None:
+                nn.init.zeros_(proj.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        z = self.up_proj(x)  # [..., hidden]
+        # GELU, written out: z times the probability a standard normal falls below z.
+        hidden = 0.5 * z * (1.0 + torch.erf(z / math.sqrt(2.0)))
+        return self.down_proj(hidden)  # [..., d_model]
 
     def extra_repr(self) -> str:
         return f"d_model={self.d_model}, hidden_dim={self.hidden_dim}"

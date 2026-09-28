@@ -50,6 +50,10 @@ Rules for the reference tier:
 - **`init_state` is how generation stays ignorant.** It asks each mixer for the
   state it needs and never learns what kind that is — a growing KV cache, a
   rolling one, a fixed-size matrix. Ignore `max_len` if your state is bounded.
+- **Mark your output projection.** Set `residual_out = True` on the last
+  `nn.Linear` before the residual add, as attention does on `o_proj`. Depth-scaled
+  init finds projections by that flag, and `build_model` refuses a model where a
+  branch has none rather than leaving it at the unscaled init.
 
 ## 2. Pick your positional handling explicitly
 

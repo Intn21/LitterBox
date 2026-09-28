@@ -11,11 +11,13 @@ from litterbox.model.assemble import dense_transformer
 from litterbox.model.block import TransformerBlock, scale_residual_projections
 from litterbox.model.build import build_block, build_model
 from litterbox.model.mixers.base import MixerState, TokenMixer
-from litterbox.model.mlp import SwiGLU
-from litterbox.model.norm import RMSNorm
+from litterbox.model.mlp import GeluMLP, SwiGLU
+from litterbox.model.norm import LayerNorm, RMSNorm
 from litterbox.model.registry import available_mixers, get_mixer, register_mixer
 
 __all__ = [
+    "GeluMLP",
+    "LayerNorm",
     "MixerState",
     "RMSNorm",
     "SwiGLU",

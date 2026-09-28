@@ -76,12 +76,12 @@ class LayerConfig(BaseModel):
 
 
 class MLPConfig(_Strict):
-    type: Literal["swiglu"] = "swiglu"
+    type: Literal["swiglu", "gelu"] = "swiglu"
     hidden_mult: float = Field(default=4.0, gt=0)
 
 
 class NormConfig(_Strict):
-    type: Literal["rmsnorm"] = "rmsnorm"
+    type: Literal["rmsnorm", "layernorm"] = "rmsnorm"
     eps: float = Field(default=1e-5, gt=0)
 
 

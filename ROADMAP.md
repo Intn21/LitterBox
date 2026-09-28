@@ -19,14 +19,14 @@ milestones after it are listed below, but they are not the plan until then.
 
 | | |
 |---|---|
-| ✅ Working | tokenizers, data configs and packing, four positional strategies, full and sliding-window attention in two tiers each, RMSNorm, SwiGLU, the block, the backbone, model configs with layer-pattern tiling, the training loop, both KV caches and cached generation — 275 real tests |
-| 🔨 Next | a second MLP and a second norm (step 5), then linear attention (step 6) |
+| ✅ Working | tokenizers, data configs and packing, four positional strategies, full and sliding-window attention in two tiers each, RMSNorm and LayerNorm, SwiGLU and a GELU MLP, the block, the backbone, model configs with layer-pattern tiling, the training loop, both KV caches and cached generation — 293 real tests |
+| 🔨 Next | linear attention (step 6) |
 | ⬜ Stubs | 15 files under `src/` are still entirely stubs |
 
 Swapping the token mixer is now a config edit: a dense model, a sliding-window
-model and a 3:1 hybrid train and generate from one code path. Both mixers are
-attention with a KV cache, though, so the state interface has not yet met
-something it was not shaped around.
+model and a 3:1 hybrid train and generate from one code path. So is swapping the
+MLP or the norm. Both mixers are attention with a KV cache, though, so the state
+interface has not yet met something it was not shaped around.
 
 ---
 
@@ -77,8 +77,8 @@ thing behind each compartment.
 - [x] `block.py` — token mixer and channel mixer both injected, never constructed;
       pre-norm residuals, plus depth-scaled init via an opt-in flag
 - [x] `transformer.py` — embeddings, the stack, final norm, LM head
-- [x] SwiGLU, RMSNorm — `model/mlp.py` and `model/norm.py`, each with room for the
-      second implementation step 5 asks for
+- [x] SwiGLU, RMSNorm — `model/mlp.py` and `model/norm.py`; step 5 added the
+      second implementation to each
 
 The block must never learn what it is holding. The moment it grows an
 `isinstance` check the compartment has stopped being one.
@@ -170,15 +170,28 @@ that only works at training time is not the thing being built.
 > hybrid *recovers* what a window *loses* is not shown here — it needs a
 > retrieval task past the window, which needs the eval harness.
 
-### Step 5 — Prove the other seams
+### Step 5 — Prove the other seams ✅
 
-- [ ] A second channel mixer (plain MLP or GeGLU)
-- [ ] A second norm, or a NoPE layer inside a hybrid
+- [x] A second channel mixer: `GeluMLP`, the plain two-matrix MLP GPT-2 uses,
+      at the same parameter budget as SwiGLU for the same `hidden_mult`
+- [x] A second norm: `LayerNorm`, mean-centered, with an optional bias. (NoPE
+      inside a hybrid already worked: `pos: nope` per layer)
 
 Cheap — a day's work. Without it, those compartments are still hypotheses. A
 seam with one implementation behind it has not been tested as a seam.
 
 > **Condition.** Nothing has exactly one implementation behind it.
+>
+> **Met.** `mlp: {type: gelu}` and `norm: {type: layernorm}` are config edits.
+> `tests/test_config.py` builds a SWA/full hybrid in all four MLP × norm
+> pairings, checks each starts at `ln(vocab)` and generates from its caches
+> exactly what it generates without them; `tests/test_overfit_single_batch.py`
+> overfits the TinyStories dense config with both swapped by override.
+>
+> The seam hid one assumption. Depth-scaled init finds each branch's output
+> projection by a `residual_out` flag, so a branch without it kept its unscaled
+> init and nothing said so. `build_model` now refuses that model and names the
+> layer — which matters for step 6, whose mixer has to set the flag too.
 
 ### Step 6 — Prove the state seam
 
