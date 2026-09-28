@@ -257,6 +257,11 @@ plot and JSON.
 `deltanet`, `gated_deltanet`, validated numerically against
 `flash-linear-attention` as a test dependency and never a runtime one.
 
+The gate is the whole difference between the two. DeltaNet's delta rule only
+rewrites what a new key points at, so nothing else in the state ever fades;
+Gated DeltaNet first scales the whole state by a number in (0, 1), computed from
+each token — the LSTM's forget gate, back on a linear-attention state.
+
 Then the flagship experiment: a matched-budget ablation at 100M–350M — a
 full-attention control against pure GDN and hybrids at 7:1, 3:1, and 1:1 —
 swept across context lengths.
@@ -317,6 +322,14 @@ MoE in the MLP slot. By now each is "add a mixer, run the standard ablation."
 
 Sequence compression has the least independent replication in the literature,
 which makes it the most valuable thing here to actually check.
+
+**Gated attention.** A sigmoid gate on each head's output before `o_proj`,
+computed from the layer's input — SwiGLU's gate-times-content, applied to
+attention (Qiu et al., 2025; Qwen3-Next pairs it with Gated DeltaNet). Claimed
+to stabilise training and remove attention sinks, where heads park weight on
+the first token. Likely a flag on `full_attention` rather than a new mixer, since
+the state is unchanged — and checkable at TinyStories scale, because a sink is
+measurable directly: attention mass on position 0, with the gate and without.
 
 ---
 
