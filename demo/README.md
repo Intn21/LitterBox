@@ -35,6 +35,7 @@ printed note instead of failing.
 | `mixers/linear_attention.ipynb` | Constant-size state, and the parallel/recurrent duality | planned |
 | [positional/sinusoidal.ipynb](positional/sinusoidal.ipynb) | Position tables, learned and sinusoidal — why attention needs them, why a stack of waves doesn't repeat, and the distance trick RoPE is built on | ✅ |
 | [positional/rope.ipynb](positional/rope.ipynb) | Rotary embeddings — position as a turn, the `rotate_half` trick traced by hand, and the interleaved/half layout bug that raises nothing | ✅ |
+| [mlp/activations.ipynb](mlp/activations.ipynb) | Activation functions, then gates — twenty matrices that collapse into one, the sigmoid stack whose first layer gets five trillion times less gradient, 64 dead ReLUs that Adam can't revive, a SwiGLU layer by hand, and `a × b`, which one gated channel learns exactly | ✅ |
 
 ## Writing a new one
 
