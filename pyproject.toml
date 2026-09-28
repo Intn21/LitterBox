@@ -111,5 +111,7 @@ exclude = ["demo/**/*.ipynb"]
 # Teaching notebooks are prose with code in it, not library code. Their print
 # statements are formatted for readable *output* and wrapping them to 100 columns
 # makes the source worse; `zip(strict=)` is noise in a cell written to be read
-# once. Correctness rules (F, UP) still apply.
-"demo/**/*.ipynb" = ["E501", "B905", "I001"]
+# once. Plot cells put several short matplotlib calls on one line, and a lambda
+# bound to a name reads better beside its one-line alternative than a def does,
+# so E702, E401 and E731 are off too. Correctness rules (F, UP) still apply.
+"demo/**/*.ipynb" = ["E501", "B905", "I001", "E702", "E401", "E731"]
