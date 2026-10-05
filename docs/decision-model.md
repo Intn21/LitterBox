@@ -276,35 +276,40 @@ was built to test.
 
 ## Part 2 — Draft roadmap: a decision model in litterbox
 
+Revised 2026-10-05 after the dissent pass. Two things changed: the readout is
+listwise (a decision position that sees the whole option list), because that
+is what the API evidence says Jev does; and the headline calibration metric is
+coverage at a fixed error budget, because that is the number no open clone has
+matched and temperature scaling cannot fix.
+
 **The goal, stated as something testable:**
 
 > A `/v1/systemone`-compatible server backed by a model we trained, which on a
 > held-out typed-decision set beats the TF-IDF + logistic-regression baseline
-> on accuracy and reports probabilities with ECE under 0.05 after temperature
-> fitting, with schema closure and question independence proven by tests
-> rather than claimed.
+> on accuracy, reports probabilities with ECE under 0.05 after temperature
+> fitting, and automates more traffic at a 5% error budget than the same
+> model with its confidences shuffled — with schema closure and question
+> isolation proven by tests rather than claimed.
 
 Numbers to beat, from the public record: on `typed-decisions` the TF-IDF
-baseline scores 66.1% accuracy at ECE 0.021; Jebadiah 4B scores 72.5% and Laya
-base, zero-shot, 36.2%. Jev scores 72.7%.
+baseline scores 66.1% accuracy at ECE 0.021; Jebadiah 4B scores 72.5%, Laya
+base zero-shot 36.2%, Jev 72.7%. On coverage at ≤5% error, out of domain, Jev
+reaches 0.70 and Kev-9B 0.45 to 0.57.
 
 ### Two routes, and why we take both
 
-- **Route A, the readout on a pretrained backbone.** Serialize, prefill, read
-  the label-token logits, train with cross-entropy plus Brier, fit a
-  temperature. This is Jebadiah's recipe. It produces a *useful* model within a
-  few GPU hours and needs nothing new in the architecture.
-- **Route B, the head on our own backbone.** Option markers scored by a small
-  head, questions block-masked so they share the state but not each other.
-  This is Clef's and Laya's mechanism. It produces a *small* model that teaches
-  the mechanism, and the independence and closure properties are testable at
-  toy scale on the Mac.
+- **Route A, a pretrained backbone.** LoRA on a small open chat checkpoint,
+  prefill, read out, cross-entropy plus Brier, temperature. Jebadiah's recipe
+  with Kev's readout. A *useful* model in a few GPU hours.
+- **Route B, our own backbone.** The same readout and loss on the TinyStories
+  model, trained from scratch on rule-generated data. A *small* model that
+  teaches the mechanism, where isolation, closure and order bias are testable
+  with `torch.allclose` on the Mac.
 
-The plan builds the mechanism first (B) on the TinyStories backbone, where
-every property can be checked with `torch.allclose`, then swaps the backbone
-for a pretrained one (A) when the question becomes accuracy rather than
-correctness. That is the repo's reference-tier-then-fast-tier rule applied to
-a model instead of a kernel.
+Build B first, then swap in A when the question becomes accuracy rather than
+correctness: the repo's reference-tier-then-fast-tier rule applied to a model
+instead of a kernel. The readout, the mask and the loss are shared code; only
+the backbone differs.
 
 ### Step 0 — The interface and the formulas
 
@@ -313,62 +318,84 @@ a model instead of a kernel.
       2 to 10 levels) and the response.
 - [ ] `decide/derive.py`: `confidence` and `score` from a probability
       vector, matching the documented formulas and worked examples.
-- [ ] `decide/readout.py`: given any causal LM and a request, render the
-      prompt, run one forward pass, softmax over the label-token logits. Works
-      on our TinyStories checkpoint and on a Hugging Face model through the
-      same function.
+- [ ] `decide/readout.py`, baseline form: given any causal LM and a request,
+      render the prompt with `A=`, `B=`, `C=` labels, run one forward pass,
+      softmax over the label-token logits. Works on our TinyStories
+      checkpoint and on a Hugging Face model through the same function. This
+      is the zero-training baseline every later step is compared against.
 - [ ] A calibration module: Brier, log loss, ECE with equal-width and
-      equal-mass bins, a reliability diagram, and a **noise floor** (the ECE a
+      equal-mass bins, a reliability diagram, a **noise floor** (the ECE a
       perfectly calibrated model would show on the same predicted
-      distributions, by resampling), so that a reported ECE has a baseline.
+      distributions, by resampling), and **coverage at a fixed error budget**
+      with its area version (AURC). The last two measure ordering, which ECE
+      does not.
 
 > **Condition.** Every answer is in the schema, for any input, by
 > construction: a property test that fuzzes states and schemas and never finds
 > an out-of-schema value. The confidence and score functions reproduce the
 > docs' examples (`1.43`, confidence `0.35`). The ECE of synthetic
-> perfectly-calibrated predictions lands on the noise floor.
+> perfectly-calibrated predictions lands on the noise floor, and coverage of
+> perfectly-ordered predictions equals 1 minus the error budget's share.
 
 ### Step 1 — The data
 
 - [ ] A rule-generated typed-decision corpus: templated support tickets, log
       lines and JSON records with known labels for queue (choice), urgency
       (score), and a handful of boolean properties (noul). Rule-generated
-      means the label is recoverable from the text by construction, and we
-      can also generate the *unrecoverable* variant on purpose, where the
-      label depends on a policy not in the state, to test whether the model
-      says it does not know.
+      means we set the label frequencies: "charged twice" is billing 60% of
+      the time by construction, so the honest answer is known. A deliberately
+      *unrecoverable* variant, where the label depends on a policy absent
+      from the state, tests whether the model reports a flat distribution.
 - [ ] Public sets through the existing data configs: Banking77 (77-way
-      choice), BoolQ (noul), SST-5 and HelpSteer2 (score). A manifest with
-      source and license, like Jebadiah's.
+      choice), BoolQ (noul), SST-5 and HelpSteer2 (score), ChaosNLI for
+      multi-annotator soft labels. A manifest with source and license, like
+      Jebadiah's.
 - [ ] Augmentation at pack time: shuffle option order, shuffle JSON keys,
-      paraphrase instructions, so the model cannot learn position.
+      paraphrase instructions, so position is not learnable.
 
 > **Condition.** `litterbox-pack` produces shards for the decision task in the
 > same format training already consumes; a held-out split exists for every
-> source; the TF-IDF + logistic-regression baseline is run on it and its
-> accuracy and ECE are recorded in `experiments/`.
+> source; the TF-IDF + logistic-regression baseline and the step-0 label-token
+> baseline are both run on it and recorded in `experiments/`.
 
-### Step 2 — Route B: markers and a head on our backbone
+### Step 2 — The listwise readout on our backbone
 
-- [ ] A non-causal attention option on `full_attention`: a `causal: false`
-      flag, or an explicit block mask. Questions attend to the state and to
-      themselves; the state attends to itself; nothing attends across
-      questions.
-- [ ] Option markers: one reserved token per option, placed after each
-      question's text; a `DecisionHead` that reads the final hidden state at
-      each marker and produces one logit per option, softmaxed per question.
+The token layout, following Kev and Strands Decider:
+
+```
+<state> … state … <q> instructions <opt> option 1 </opt> <opt> option 2 </opt> … <decide>
+```
+
+- [ ] A block mask on `full_attention`, through the same `_allowed(q_pos,
+      k_pos)` seam `sliding_window` uses: the state attends causally to
+      itself; each question attends causally to the state and to itself;
+      nothing attends across questions. Position ids restart after the state
+      for every question, so a question's answer does not depend on how many
+      questions precede it. Attention stays causal; no bidirectional mode is
+      needed.
+- [ ] Reserved tokens `<q>`, `<opt>`, `</opt>`, `<decide>` in the tokenizer,
+      so option boundaries cannot be forged by text in the state.
+- [ ] A `PointerHead`: project the hidden state at `<decide>` to a query and
+      the hidden state at each `</opt>` to a key, scaled dot product, masked
+      softmax over that question's options. About a million parameters.
+      Because `<decide>` comes last it has seen every option, which is what
+      makes the readout listwise and what the 255-option cap no longer
+      constrains.
 - [ ] Training loop support for a non-LM loss: cross-entropy plus Brier,
       with the ordinal kernel for score questions (adjacent levels get partial
       target mass).
 - [ ] Temperature fit per primitive on a held-out slice.
 
-> **Condition.** Three tests pass. *Independence:* a request with k questions
+> **Condition.** Four tests pass. *Isolation:* a request with k questions
 > returns the same probabilities as k single-question requests, to float
-> tolerance. *Order invariance:* permuting the options permutes the
-> probabilities and nothing else. *Overfit:* one batch trains to zero loss.
-> Then, on the rule-generated held-out set, accuracy is well above majority
-> class and post-temperature ECE is under 0.05. Record the run in
-> `experiments/`.
+> tolerance, and a code planted in a sibling question is invisible while the
+> same code in the state is visible. *Closure:* the softmax has exactly as
+> many entries as options, by construction. *Order bias:* measured, not
+> assumed — permuting options flips the top answer on fewer than 2% of
+> held-out items, and the flips concentrate in low-confidence items. *Overfit:*
+> one batch trains to zero loss. Then, on the rule-generated held-out set,
+> reported probabilities match the frequencies we wrote into the generator,
+> and post-temperature ECE is under 0.05. Record the run in `experiments/`.
 
 ### Step 3 — Calibration training beyond cross-entropy
 
@@ -377,27 +404,32 @@ not a feature.
 
 - [ ] Implement the alternatives as loss options: Brier only, log plus
       spherical, ranked probability score for score questions, and a
-      REINFORCE/GRPO-style stage with a calibration reward (Laya's recipe).
+      REINFORCE/GRPO-style stage with a calibration reward and partial credit
+      for adjacent levels (the Clef and Laya recipes).
 - [ ] Run the matrix on the step-2 model against the unrecoverable-label
-      variant from step 1, where the right answer is a flat distribution.
+      variant from step 1, where the right answer is a flat distribution, and
+      report ECE *and* coverage at 5% error for each.
 
 > **Condition.** A results table in `experiments/` answering one question: does
 > anything beat cross-entropy plus Brier plus temperature on out-of-distribution
-> ECE, and by how much? A negative result closes the step.
+> ECE or on coverage, and by how much? A negative result closes the step.
 
-### Step 4 — Route A: a pretrained backbone
+### Step 4 — A pretrained backbone
 
-- [ ] Load a small open model (Qwen3.5-0.6B to 4B, chat checkpoint) through
-      `eval/external.py`, attach LoRA, and train the step-0 readout with the
-      step-2 loss on the step-1 data. Runs on RunPod; the 4B fits one 4090.
+- [ ] Load a small open chat checkpoint (Qwen3.5-0.6B to 4B) through
+      `eval/external.py`, attach rank-16 LoRA, and train the step-2 pointer
+      head with the step-2 loss on the step-1 data. Runs on RunPod; the 4B
+      fits one 4090.
 - [ ] Evaluate on the public held-out sets and on JevBench and the Nimble
       public subsets, so the numbers are comparable to the published ones.
+      Report accuracy, ECE and coverage at 5% error, against the step-0
+      label-token baseline on the same backbone.
 
-> **Condition.** Beats the TF-IDF baseline on `typed-decisions` and lands within
-> a few points of Jebadiah 4B (72.5%), with ECE under 0.05. If the markers-plus-
-> head readout from step 2 can be attached to the pretrained backbone, compare
-> it to single-token labels on Banking77, where 77 options is where single
-> tokens strain.
+> **Condition.** Beats the TF-IDF baseline on `typed-decisions`, lands within
+> a few points of Jebadiah 4B (72.5%) with ECE under 0.05, and the pointer
+> head beats single-token labels on Banking77, where 77 options is where
+> single tokens strain. Coverage at 5% error is reported next to Kev's
+> 0.45 to 0.57 and Jev's 0.70.
 
 ### Step 5 — Serve it
 
@@ -409,20 +441,23 @@ not a feature.
       built on.
 
 > **Condition.** `jev-ood-calibration` runs end to end against our server and
-> produces its report; latency per added question is measured and recorded.
+> produces its report; latency per added question and per added option is
+> measured and recorded, and the per-option curve is flat.
 
 ### What stays deferred
 
-Images, reasoning before deciding (the "structured decision thinking mode"
-TypeSafe hinted at), abstention as a first-class primitive, and anything over
-10 score levels or 255 options. Each has a trigger; none is on the path to the
-goal above.
+Images; a thinking budget before the readout (decode N tokens, then read out
+— it restores the decode loop and is a separate experiment on which question
+types it helps); abstention as a first-class primitive; calibration under
+composition, where one decision becomes the next state; anything over 10
+score levels. Each has a trigger; none is on the path to the goal above.
 
 ### Relationship to the main roadmap
 
 This does not touch step 6 (linear attention). It uses full attention only,
-and the one architectural change it needs, a mask rule on `full_attention`, is
-the same seam `sliding_window` already uses.
+causal, and the one architectural change it needs, a block mask with
+restarted positions on `full_attention`, is the same seam `sliding_window`
+already uses.
 
 ---
 
