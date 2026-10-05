@@ -169,6 +169,100 @@ workflows with many short questions, where output tokens dominate LLM cost;
 one independent attempt put the realistic figure near 25×; and TypeSafe's own
 benchmark measures agreement with other models, not ground truth.
 
+### Where the accounts disagree
+
+Added 2026-10-05 after a second pass over English, Chinese and Japanese
+sources. The mechanism above is the consensus, but it is not unanimous, and
+the disagreements cluster in four places.
+
+**1. Whether the mechanism was ever the point.** The loudest dissent is that
+there is nothing to reverse-engineer. The r/LocalLLaMA and Hacker News line is
+that Jev is a zero-shot classifier, a category BERT, GLiNER and NLI
+cross-encoders have covered for years; a Japanese reviewer who read seven
+clones traces the readout to PET (2020) and the recalibration to "Calibrate
+Before Use" (2021), and concludes the 2026 surge "fitted existing techniques
+into that API shape." A CSDN essay calls it "带智商的高速 if-else", intelligent
+high-speed if-else. Han Xiao's reaction was surprise that a discriminative
+model could excite the public at all. TypeSafe's founder concedes the point on
+architecture and relocates the claim: on the Latent Space podcast Almeida calls
+the company "a data lab rather than a model lab," says 100% of the data is
+synthetic, and describes the work as finding the model's "jaggednesses" and
+addressing them "surgically." He declines every architectural question. The
+quote "exactly right!" in reply to "basically a zero-shot classifier" is
+widely repeated and could not be located in the launch thread.
+
+**2. Whether the open clones actually reproduced it.** The two-hour
+reproductions that circulated on Zhihu ("网友用两小时就实现了 TypeSafe 用了两年
+RLCD 才做到的效果") are stock Qwen2.5-1.5B-Instruct with a parallel
+constrained-decoding trick: one batched pass fills every field of a closed
+schema and reads per-field probabilities. No training, no calibration. They
+reproduce the latency and the schema closure, which is the part that was
+never hard. Two measurements say the trained part did not transfer. On
+JevBench's calibration axis Jev scores 82.7 and the clones 42.0 to 72.6. And a
+Kev-9B that matches Jev on ECE (0.042 vs 0.049) automates half as much traffic
+at a 5% error budget (coverage 0.45 to 0.57 vs 0.70). ECE measures the scale of
+the confidence; coverage at fixed error measures its *ordering*, and
+temperature scaling is monotone, so it cannot fix ordering. That ordering is
+the one number where Jev still leads every open model, and it has to have come
+from training data, which is the part TypeSafe keeps.
+
+**3. What the readout is.** Three families now exist, and the API evidence
+picks between them. Archer Hume's reverse-engineering from about 10,000 calls
+is the only systematic probe: latency is linear in state length and sublinear
+in question count (1,500 questions in under 600 ms); a 255-option question
+returns as fast as a two-option one; a code hidden in a sibling question is
+invisible (probability 0.00) and visible when moved to the state (0.90); and
+adding an irrelevant option shifts the log-odds between the existing options
+by −0.28, which fixed independent logits cannot do. The conclusion is a causal
+backbone, likely sparse MoE given 30k tokens in 160 ms, one shared-state
+prefill, isolated question branches, and a **listwise** readout where the
+decision position attends to the whole option list before scoring. That is the
+pointer-head design (a `<decide>` query dotted against each option's last
+hidden state) that Kev and AWS's Strands Decider adopt, and it is not the
+single-token-label readout Jebadiah uses. Jev's option-order bias, admitted in
+its own jaggedness page, is the predicted side effect of a causal listwise
+readout. Hume also found Jev's tokenizer matches none of 192 public ones,
+closest to Qwen at 348/415 probes, which argues against a straight open-weight
+fine-tune.
+
+The diffusion hypothesis has a different status. DiffusionGemma with
+constrained logits agrees with Jev on about 90% of answers and Matt Mastracci's
+live evals had it "roughly tied in intelligence," which some read as evidence
+Jev is diffusion-based. It is not: agreement on answers is what any strong
+classifier shows, and the latency curves above are the prefill-and-readout
+shape, not iterated denoising.
+
+**4. What RLCD contains.** Nobody outside TypeSafe knows, and three accounts
+circulate. Clef and Laya publish RL stages (partial credit for adjacent
+levels, group-baseline REINFORCE against log and spherical scores). Jebadiah
+publishes none and calibrates best. A widely shared Japanese "deep research
+report" gives RLCD specifics (Gaussian logit noise decaying from 1.0 to 0.3,
+eight sampled candidates, a log-score floor of −9.21) that match no TypeSafe
+statement and could not be traced to any clone's documentation; treat them as
+invented. The closest published prior art is "Rewarding Doubt"
+(Bani-Harouni et al., 2025), PPO against the log scoring rule for verbalised
+confidence. One substantive critique of the *scope* of RLCD comes from the same
+Japanese report and from Anthony Maio: calibration is measured per call on
+independent items, and nothing in TypeSafe's material says it survives
+composition, where one miscalibrated decision becomes the state of the next.
+
+**The field three weeks on.** OpenAI's Decisions API on GPT-6 Luna returns a
+self-reported confidence that independent tests found uncalibrated (99% meant
+68% on one suite). Alibaba's Bailian `decision-model-preview` speaks the
+System One protocol, discloses nothing about its model, and the first V2EX
+thread about it shows a 50/50 answer at confidence 0.01 on "delete all rows
+from the users table" that flipped to "safe" at 0.69 when "no backup" was
+added. AWS's Strands Decider 2B is the cleanest open statement of the
+pointer-head design, 19 iterations in, and reports that an earlier "slot head"
+was significantly worse. Perplexity's pplx-decider 27B and Bespoke's Nimble
+round out the board.
+
+What this changes in Part 2: step 2 should build the **listwise pointer
+readout** rather than single-token labels, since that is what the evidence
+says Jev does and what the order-bias test exercises; and the evaluation in
+step 4 should report coverage at a fixed error budget alongside ECE, because
+that is the number the clones have not matched.
+
 ### Why it matters for this repo
 
 A decision model is a transformer with the LM head replaced by a schema-closed
@@ -357,3 +451,15 @@ Open models and benchmarks: [Cloudflare Clef](https://blog.cloudflare.com/clef-d
 [Verdict](https://github.com/Heman10x-NGU/Verdict-open-jev),
 [jev-ood-calibration](https://github.com/scienthoon/jev-ood-calibration),
 [jevbench](https://github.com/dhruvmehra/jevbench).
+Dissent and reverse-engineering: [Jev's Architecture Unmasked](https://archerhume.com/posts/jevs-architecture-unmasked/),
+[Latent Space interview](https://www.latent.space/p/jev), [36kr interview](https://eu.36kr.com/en/p/3994032312630020),
+[seven clones, computational form only](https://note.com/zephel01/n/ne9a2c037e513),
+[confidence ordering vs temperature](https://saulius.io/blog/jev-rlcd-decision-model-calibrated-probabilities),
+[is Jev just a classifier](https://systemonemodels.org/guides/is-jev-just-a-classifier/),
+[Arcturus Labs](https://arcturus-labs.com/blog/2026/09/21/will-openai-eat-jevs-lunch/),
+[Anthony Maio](https://anthonymaio.substack.com/p/jev-the-language-model-that-wont),
+[Kev](https://github.com/sashankh/kev), [Strands Decider](https://strandsagents.com/blog/introducing-strands-decider/),
+[Qwen-2.5-1B-RLCD](https://huggingface.co/harshatheg/Qwen-2.5-1B-RLCD),
+Zhihu: [两小时复刻](https://www.zhihu.com/question/2084281918074385700), [RLCD 如何理解](https://www.zhihu.com/question/2086022553726990200), [深度拆解](https://zhuanlan.zhihu.com/p/2085057727869593002);
+[CSDN 确定性小模型](https://damodev.csdn.net/6aace8bc5c13c42b539d14fe.html), [gm7 过度宣发透视](https://www.gm7.org/archives/159667),
+[V2EX on Alibaba's model](https://www.v2ex.com/t/1245606), [Bailian decision model](https://help.aliyun.com/zh/model-studio/decision-model/).
