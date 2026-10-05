@@ -319,6 +319,15 @@ contribution guide.
 **Exit criterion.** A stranger clones the repo, runs one command, and reproduces
 one experiment from `experiments/` end to end.
 
+### Decision model (side quest)
+
+A System One model in the style of TypeSafe's Jev: state and typed questions
+in, calibrated probabilities over a closed schema out, one prefill and no
+decode. It reuses the backbone and the training loop and needs one new seam, a
+mask rule on `full_attention`, plus a non-LM head and a calibration objective.
+Research note and a stepwise roadmap with exit conditions in
+[docs/decision-model.md](docs/decision-model.md).
+
 ### Frontier
 
 CSA/HCA sequence compression, MSA block top-k, KDA, NSA's three-branch design,
