@@ -36,6 +36,7 @@ printed note instead of failing.
 | [positional/sinusoidal.ipynb](positional/sinusoidal.ipynb) | Position tables, learned and sinusoidal — why attention needs them, why a stack of waves doesn't repeat, and the distance trick RoPE is built on | ✅ |
 | [positional/rope.ipynb](positional/rope.ipynb) | Rotary embeddings — position as a turn, the `rotate_half` trick traced by hand, and the interleaved/half layout bug that raises nothing | ✅ |
 | [mlp/activations.ipynb](mlp/activations.ipynb) | Activation functions, then gates — twenty matrices that collapse into one, the sigmoid stack whose first layer gets five trillion times less gradient, 64 dead ReLUs that Adam can't revive, a SwiGLU layer by hand, and `a × b`, which one gated channel learns exactly | ✅ |
+| [decide/decision_model.ipynb](decide/decision_model.ipynb) | Decision models and RLCD — the same five logits as a token and as a decision, TypeSafe's `score` and `confidence` to the digit, tickets whose label frequencies you wrote yourself and a pointer head that reports them back, the five-row table that is all of RLCD, cleaned labels and an overtrained model that both lie quietly, ECE with its noise floor and coverage at a fixed error budget, the block mask that stops question two reading question one, and the fixed-order model that halves when the options move | ✅ |
 
 ## Writing a new one
 
