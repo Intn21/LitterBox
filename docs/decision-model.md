@@ -276,40 +276,50 @@ was built to test.
 
 ## Part 2 — Draft roadmap: a decision model in litterbox
 
-Revised 2026-10-05 after the dissent pass. Two things changed: the readout is
-listwise (a decision position that sees the whole option list), because that
-is what the API evidence says Jev does; and the headline calibration metric is
-coverage at a fixed error budget, because that is the number no open clone has
-matched and temperature scaling cannot fix.
+Revised 2026-10-05, twice. After the dissent pass the readout became listwise
+(a decision position that sees the whole option list) and the headline
+calibration metric became coverage at a fixed error budget. Then the backbone
+decision was made: **the model is built on a strong open checkpoint, not on
+the TinyStories backbone.** Our own backbone is used only to run the mechanics
+tests in seconds on the Mac.
 
 **The goal, stated as something testable:**
 
-> A `/v1/systemone`-compatible server backed by a model we trained, which on a
-> held-out typed-decision set beats the TF-IDF + logistic-regression baseline
-> on accuracy, reports probabilities with ECE under 0.05 after temperature
-> fitting, and automates more traffic at a 5% error budget than the same
-> model with its confidences shuffled — with schema closure and question
-> isolation proven by tests rather than claimed.
+> A `/v1/systemone`-compatible server backed by an open model we post-trained,
+> which on a held-out typed-decision set beats the TF-IDF + logistic-regression
+> baseline on accuracy, reports probabilities with ECE under 0.05 after
+> temperature fitting, and automates more traffic at a 5% error budget than
+> the same model with its confidences shuffled — with schema closure and
+> question isolation proven by tests rather than claimed.
 
 Numbers to beat, from the public record: on `typed-decisions` the TF-IDF
-baseline scores 66.1% accuracy at ECE 0.021; Jebadiah 4B scores 72.5%, Laya
-base zero-shot 36.2%, Jev 72.7%. On coverage at ≤5% error, out of domain, Jev
-reaches 0.70 and Kev-9B 0.45 to 0.57.
+baseline scores 66.1% accuracy at ECE 0.021; Jebadiah 4B scores 72.5%, Jev
+72.7%, Jebadiah 27B 78.95% on its headline macro. On coverage at ≤5% error,
+out of domain, Jev reaches 0.70 and Kev-9B 0.45 to 0.57.
 
-### Two routes, and why we take both
+### The backbone
 
-- **Route A, a pretrained backbone.** LoRA on a small open chat checkpoint,
-  prefill, read out, cross-entropy plus Brier, temperature. Jebadiah's recipe
-  with Kev's readout. A *useful* model in a few GPU hours.
-- **Route B, our own backbone.** The same readout and loss on the TinyStories
-  model, trained from scratch on rule-generated data. A *small* model that
-  teaches the mechanism, where isolation, closure and order bias are testable
-  with `torch.allclose` on the Mac.
+Every open decision model that is competitive sits on Qwen: Clef and
+Jebadiah 27B on Qwen3.8-27B, Clef-flash, Jebadiah 9B and Kev-9B on Qwen3.5-9B,
+Strands Decider on Qwen3.5-2B. Chat checkpoints beat base checkpoints by about
+two points in Jebadiah's ablation at no cost. So:
 
-Build B first, then swap in A when the question becomes accuracy rather than
-correctness: the repo's reference-tier-then-fast-tier rule applied to a model
-instead of a kernel. The readout, the mask and the loss are shared code; only
-the backbone differs.
+- **Development backbone: Qwen3.5-9B chat.** Rank-16 LoRA in bf16 fits a
+  single 4090 with gradient checkpointing, and a full epoch on the step-1 data
+  is an hour or two. This is where every experiment runs.
+- **Final backbone: Qwen3.8-27B chat.** One run, on an H100 or H200 pod, for
+  the number that goes next to Jebadiah 27B and Clef. Jebadiah's 27B run took
+  167 minutes on one H200.
+- **Mechanics stand-in: our TinyStories model**, or a randomly initialised
+  Qwen config with two layers. The mask, the pointer head, the isolation and
+  closure tests, and the serializer are backbone-agnostic and must run on the
+  Mac in seconds. Nothing is trained on it.
+
+The backbone is loaded through `transformers`, with LoRA through `peft`, which
+becomes a new optional extra. The block mask is passed as a 4-D attention mask
+and the restarted positions as `position_ids`, both of which `transformers`
+accepts without patching the model; the pointer head reads
+`output_hidden_states`. Nothing under `src/litterbox/model/` changes.
 
 ### Step 0 — The interface and the formulas
 
@@ -320,9 +330,9 @@ the backbone differs.
       vector, matching the documented formulas and worked examples.
 - [ ] `decide/readout.py`, baseline form: given any causal LM and a request,
       render the prompt with `A=`, `B=`, `C=` labels, run one forward pass,
-      softmax over the label-token logits. Works on our TinyStories
-      checkpoint and on a Hugging Face model through the same function. This
-      is the zero-training baseline every later step is compared against.
+      softmax over the label-token logits. This is the zero-training baseline
+      every later step is compared against, and the first thing to run on the
+      9B.
 - [ ] A calibration module: Brier, log loss, ECE with equal-width and
       equal-mass bins, a reliability diagram, a **noise floor** (the ECE a
       perfectly calibrated model would show on the same predicted
@@ -334,8 +344,9 @@ the backbone differs.
 > construction: a property test that fuzzes states and schemas and never finds
 > an out-of-schema value. The confidence and score functions reproduce the
 > docs' examples (`1.43`, confidence `0.35`). The ECE of synthetic
-> perfectly-calibrated predictions lands on the noise floor, and coverage of
-> perfectly-ordered predictions equals 1 minus the error budget's share.
+> perfectly-calibrated predictions lands on the noise floor. The baseline
+> readout answers a request on the 9B, on a pod, and its zero-shot accuracy
+> and ECE on one public set are recorded.
 
 ### Step 1 — The data
 
@@ -348,17 +359,18 @@ the backbone differs.
       from the state, tests whether the model reports a flat distribution.
 - [ ] Public sets through the existing data configs: Banking77 (77-way
       choice), BoolQ (noul), SST-5 and HelpSteer2 (score), ChaosNLI for
-      multi-annotator soft labels. A manifest with source and license, like
+      multi-annotator soft labels, and the `typed-decisions` set for the
+      headline comparison. A manifest with source and license, like
       Jebadiah's.
 - [ ] Augmentation at pack time: shuffle option order, shuffle JSON keys,
       paraphrase instructions, so position is not learnable.
 
-> **Condition.** `litterbox-pack` produces shards for the decision task in the
-> same format training already consumes; a held-out split exists for every
-> source; the TF-IDF + logistic-regression baseline and the step-0 label-token
-> baseline are both run on it and recorded in `experiments/`.
+> **Condition.** Records exist as JSONL in a documented schema with a held-out
+> split for every source; the TF-IDF + logistic-regression baseline and the
+> step-0 label-token baseline on the 9B are both run on it and recorded in
+> `experiments/`.
 
-### Step 2 — The listwise readout on our backbone
+### Step 2 — The listwise readout, mechanics first
 
 The token layout, following Kev and Strands Decider:
 
@@ -366,38 +378,56 @@ The token layout, following Kev and Strands Decider:
 <state> … state … <q> instructions <opt> option 1 </opt> <opt> option 2 </opt> … <decide>
 ```
 
-- [ ] A block mask on `full_attention`, through the same `_allowed(q_pos,
-      k_pos)` seam `sliding_window` uses: the state attends causally to
-      itself; each question attends causally to the state and to itself;
-      nothing attends across questions. Position ids restart after the state
-      for every question, so a question's answer does not depend on how many
-      questions precede it. Attention stays causal; no bidirectional mode is
-      needed.
-- [ ] Reserved tokens `<q>`, `<opt>`, `</opt>`, `<decide>` in the tokenizer,
-      so option boundaries cannot be forged by text in the state.
+- [ ] The serializer: request to token ids, with reserved tokens `<q>`,
+      `<opt>`, `</opt>`, `<decide>` added to the tokenizer so option
+      boundaries cannot be forged by text in the state, and with the index of
+      every `</opt>` and `<decide>` position returned for the head.
+- [ ] The block mask and positions: the state attends causally to itself;
+      each question attends causally to the state and to itself; nothing
+      attends across questions. Position ids restart after the state for
+      every question. Built as a 4-D mask and a `position_ids` tensor, so it
+      plugs into any `transformers` causal model unchanged.
 - [ ] A `PointerHead`: project the hidden state at `<decide>` to a query and
       the hidden state at each `</opt>` to a key, scaled dot product, masked
       softmax over that question's options. About a million parameters.
       Because `<decide>` comes last it has seen every option, which is what
-      makes the readout listwise and what the 255-option cap no longer
-      constrains.
-- [ ] Training loop support for a non-LM loss: cross-entropy plus Brier,
-      with the ordinal kernel for score questions (adjacent levels get partial
-      target mass).
-- [ ] Temperature fit per primitive on a held-out slice.
+      makes the readout listwise.
+- [ ] The loss: cross-entropy plus Brier, with the ordinal kernel for score
+      questions (adjacent levels get partial target mass). Temperature fit per
+      primitive on a held-out slice.
 
-> **Condition.** Four tests pass. *Isolation:* a request with k questions
-> returns the same probabilities as k single-question requests, to float
-> tolerance, and a code planted in a sibling question is invisible while the
-> same code in the state is visible. *Closure:* the softmax has exactly as
-> many entries as options, by construction. *Order bias:* measured, not
-> assumed — permuting options flips the top answer on fewer than 2% of
-> held-out items, and the flips concentrate in low-confidence items. *Overfit:*
-> one batch trains to zero loss. Then, on the rule-generated held-out set,
-> reported probabilities match the frequencies we wrote into the generator,
-> and post-temperature ECE is under 0.05. Record the run in `experiments/`.
+> **Condition.** On the mechanics stand-in, in seconds on the Mac: *isolation*,
+> a request with k questions returns the same probabilities as k
+> single-question requests, to float tolerance, and a code planted in a
+> sibling question is invisible while the same code in the state is visible;
+> *closure*, the softmax has exactly as many entries as options, by
+> construction; *overfit*, one batch of records trains the head and a LoRA to
+> zero loss. The same tests then pass on the 9B with the LoRA at zero, which
+> proves the mask and positions survived the `transformers` plumbing.
 
-### Step 3 — Calibration training beyond cross-entropy
+### Step 3 — Train it
+
+- [ ] Rank-16 LoRA on the 9B plus the pointer head, one epoch over the step-1
+      data, bf16, on a 4090 pod. Log with the existing JSONL logger; copy the
+      adapter and head back, not the backbone.
+- [ ] Temperature per primitive on the held-out slice.
+- [ ] Evaluate on the public held-out sets, on `typed-decisions`, and on
+      JevBench and the Nimble public subsets, so the numbers are comparable to
+      the published ones. Report accuracy, ECE and coverage at 5% error,
+      against the step-0 label-token baseline on the same backbone and
+      against the TF-IDF baseline.
+- [ ] Order bias measured, not assumed: permuting options on the held-out
+      set, count top-answer flips and where in the confidence range they
+      fall.
+
+> **Condition.** Beats the TF-IDF baseline on `typed-decisions`, lands within
+> a few points of Jebadiah 9B (73.9%) with ECE under 0.05, the pointer head
+> beats label tokens on Banking77 where 77 options is where single tokens
+> strain, fewer than 2% order flips concentrated in low-confidence items, and
+> coverage at 5% error reported next to Kev-9B and Jev. Run recorded in
+> `experiments/` with the resolved config and the hardware.
+
+### Step 4 — Calibration training beyond cross-entropy
 
 This is the step where the field is least settled, so it is an experiment,
 not a feature.
@@ -406,7 +436,7 @@ not a feature.
       spherical, ranked probability score for score questions, and a
       REINFORCE/GRPO-style stage with a calibration reward and partial credit
       for adjacent levels (the Clef and Laya recipes).
-- [ ] Run the matrix on the step-2 model against the unrecoverable-label
+- [ ] Run the matrix on the step-3 model against the unrecoverable-label
       variant from step 1, where the right answer is a flat distribution, and
       report ECE *and* coverage at 5% error for each.
 
@@ -414,50 +444,35 @@ not a feature.
 > anything beat cross-entropy plus Brier plus temperature on out-of-distribution
 > ECE or on coverage, and by how much? A negative result closes the step.
 
-### Step 4 — A pretrained backbone
-
-- [ ] Load a small open chat checkpoint (Qwen3.5-0.6B to 4B) through
-      `eval/external.py`, attach rank-16 LoRA, and train the step-2 pointer
-      head with the step-2 loss on the step-1 data. Runs on RunPod; the 4B
-      fits one 4090.
-- [ ] Evaluate on the public held-out sets and on JevBench and the Nimble
-      public subsets, so the numbers are comparable to the published ones.
-      Report accuracy, ECE and coverage at 5% error, against the step-0
-      label-token baseline on the same backbone.
-
-> **Condition.** Beats the TF-IDF baseline on `typed-decisions`, lands within
-> a few points of Jebadiah 4B (72.5%) with ECE under 0.05, and the pointer
-> head beats single-token labels on Banking77, where 77 options is where
-> single tokens strain. Coverage at 5% error is reported next to Kev's
-> 0.45 to 0.57 and Jev's 0.70.
-
-### Step 5 — Serve it
+### Step 5 — Serve it, and the 27B
 
 - [ ] A `/v1/systemone` endpoint speaking the TypeSafe request and response
       format, so the official SDKs and the public benchmark repos
       (`jev-ood-calibration`, `jevbench`) run against it unchanged.
 - [ ] Batched prefill with the shared-state block mask, so that adding a
-      question costs a few milliseconds, which is the property the product is
-      built on.
+      question costs a few milliseconds and adding an option costs nothing
+      measurable.
+- [ ] One run of the winning recipe on Qwen3.8-27B, on an H100 or H200 pod,
+      for the number next to Jebadiah 27B and Clef.
 
 > **Condition.** `jev-ood-calibration` runs end to end against our server and
 > produces its report; latency per added question and per added option is
-> measured and recorded, and the per-option curve is flat.
+> measured and the per-option curve is flat; the 27B's accuracy, ECE and
+> coverage are recorded.
 
 ### What stays deferred
 
-Images; a thinking budget before the readout (decode N tokens, then read out
-— it restores the decode loop and is a separate experiment on which question
+Images; a thinking budget before the readout (decode N tokens, then read out,
+which restores the decode loop and is a separate experiment on which question
 types it helps); abstention as a first-class primitive; calibration under
 composition, where one decision becomes the next state; anything over 10
-score levels. Each has a trigger; none is on the path to the goal above.
+score levels; training from scratch on our own backbone.
 
 ### Relationship to the main roadmap
 
-This does not touch step 6 (linear attention). It uses full attention only,
-causal, and the one architectural change it needs, a block mask with
-restarted positions on `full_attention`, is the same seam `sliding_window`
-already uses.
+This does not touch step 6 (linear attention) or anything under
+`src/litterbox/model/`. It adds a `decide/` package, a `peft` extra, and data
+and experiment records. The TinyStories model appears only as a test fixture.
 
 ---
 
