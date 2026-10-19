@@ -279,8 +279,8 @@ was built to test.
 Revised 2026-10-05, twice. After the dissent pass the readout became listwise
 (a decision position that sees the whole option list) and the headline
 calibration metric became coverage at a fixed error budget. Then the backbone
-decision was made: **the model is built on a strong open checkpoint, not on
-the TinyStories backbone.** Our own backbone is used only to run the mechanics
+decision was made: **the model is built on a strong open checkpoint, fully
+fine-tuned, not adapted with LoRA and not on the TinyStories backbone.** Our own backbone is used only to run the mechanics
 tests in seconds on the Mac.
 
 **The goal, stated as something testable:**
@@ -304,19 +304,29 @@ Jebadiah 27B on Qwen3.8-27B, Clef-flash, Jebadiah 9B and Kev-9B on Qwen3.5-9B,
 Strands Decider on Qwen3.5-2B. Chat checkpoints beat base checkpoints by about
 two points in Jebadiah's ablation at no cost. So:
 
-- **Development backbone: Qwen3.5-9B chat.** Rank-16 LoRA in bf16 fits a
-  single 4090 with gradient checkpointing, and a full epoch on the step-1 data
-  is an hour or two. This is where every experiment runs.
-- **Final backbone: Qwen3.8-27B chat.** One run, on an H100 or H200 pod, for
-  the number that goes next to Jebadiah 27B and Clef. Jebadiah's 27B run took
-  167 minutes on one H200.
+- **Development backbone: Qwen3.5-9B chat, fully fine-tuned.** No adapters:
+  every weight trains, plus the head. In bf16 with AdamW that is 18 GB of
+  weights, 18 GB of gradients and 36 GB of optimizer state before activations,
+  so the pod is one H200 (141 GB), or one H100 (80 GB) with an 8-bit optimizer
+  and gradient checkpointing. A full epoch over the step-1 data is an hour or
+  two. This is where every experiment runs.
+- **Final backbone: Qwen3.8-27B chat.** One run, for the number that goes next
+  to Jebadiah 27B and Clef. Full fine-tuning needs about 325 GB of weights,
+  gradients and optimizer state, which means two to four H200s with sharded
+  optimizer state (FSDP or ZeRO) and our first multi-GPU job. Decided at step 5,
+  not before, and only if the 9B number justifies it.
+- **Learning rate.** Full fine-tuning runs about ten times lower than adapter
+  recipes: 1e-5 to 2e-5 with warmup, one epoch, and the head at a higher rate
+  since it starts from random. Drift from the pretrained weights is the risk
+  adapters were masking; the temperature fit and the order-bias test are the
+  checks that it stayed in bounds.
 - **Mechanics stand-in: our TinyStories model**, or a randomly initialised
   Qwen config with two layers. The mask, the pointer head, the isolation and
   closure tests, and the serializer are backbone-agnostic and must run on the
   Mac in seconds. Nothing is trained on it.
 
-The backbone is loaded through `transformers`, with LoRA through `peft`, which
-becomes a new optional extra. The block mask is passed as a 4-D attention mask
+The backbone is loaded through `transformers`; no adapter library is needed.
+The block mask is passed as a 4-D attention mask
 and the restarted positions as `position_ids`, both of which `transformers`
 accepts without patching the model; the pointer head reads
 `output_hidden_states`. Nothing under `src/litterbox/model/` changes.
@@ -401,15 +411,18 @@ The token layout, following Kev and Strands Decider:
 > single-question requests, to float tolerance, and a code planted in a
 > sibling question is invisible while the same code in the state is visible;
 > *closure*, the softmax has exactly as many entries as options, by
-> construction; *overfit*, one batch of records trains the head and a LoRA to
-> zero loss. The same tests then pass on the 9B with the LoRA at zero, which
-> proves the mask and positions survived the `transformers` plumbing.
+> construction; *overfit*, one batch of records trains the model to zero
+> loss. The same isolation and closure tests then pass on the untrained 9B
+> with its fresh head, which proves the mask and positions survived the
+> `transformers` plumbing.
 
 ### Step 3 — Train it
 
-- [ ] Rank-16 LoRA on the 9B plus the pointer head, one epoch over the step-1
-      data, bf16, on a 4090 pod. Log with the existing JSONL logger; copy the
-      adapter and head back, not the backbone.
+- [ ] Full fine-tune of the 9B plus the pointer head, one epoch over the
+      step-1 data, bf16, on an H200 pod with a volume. Log with the existing
+      JSONL logger; keep the checkpoint on the volume and copy back the head,
+      the temperatures and the eval outputs, since the 18 GB of weights are
+      not worth the transfer until the run is the one we keep.
 - [ ] Temperature per primitive on the held-out slice.
 - [ ] Evaluate on the public held-out sets, on `typed-decisions`, and on
       JevBench and the Nimble public subsets, so the numbers are comparable to
@@ -452,8 +465,9 @@ not a feature.
 - [ ] Batched prefill with the shared-state block mask, so that adding a
       question costs a few milliseconds and adding an option costs nothing
       measurable.
-- [ ] One run of the winning recipe on Qwen3.8-27B, on an H100 or H200 pod,
-      for the number next to Jebadiah 27B and Clef.
+- [ ] One run of the winning recipe on Qwen3.8-27B, on a multi-GPU pod with
+      sharded optimizer state, for the number next to Jebadiah 27B and Clef.
+      Only if the 9B number justifies the first multi-GPU job in the repo.
 
 > **Condition.** `jev-ood-calibration` runs end to end against our server and
 > produces its report; latency per added question and per added option is
@@ -471,8 +485,8 @@ score levels; training from scratch on our own backbone.
 ### Relationship to the main roadmap
 
 This does not touch step 6 (linear attention) or anything under
-`src/litterbox/model/`. It adds a `decide/` package, a `peft` extra, and data
-and experiment records. The TinyStories model appears only as a test fixture.
+`src/litterbox/model/`. It adds a `decide/` package, a `transformers`-backed
+training path, and data and experiment records. The TinyStories model appears only as a test fixture.
 
 ---
 
