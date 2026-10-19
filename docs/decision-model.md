@@ -338,7 +338,7 @@ accepts without patching the model; the pointer head reads
       2 to 10 levels) and the response.
 - [x] `decide/derive.py`: `confidence` and `score` from a probability
       vector, matching the documented formulas and worked examples.
-- [ ] `decide/readout.py`, baseline form: given any causal LM and a request,
+- [x] `decide/readout.py`, baseline form: given any causal LM and a request,
       render the prompt with `A=`, `B=`, `C=` labels, run one forward pass,
       softmax over the label-token logits. This is the zero-training baseline
       every later step is compared against, and the first thing to run on the
