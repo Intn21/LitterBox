@@ -333,7 +333,7 @@ accepts without patching the model; the pointer head reads
 
 ### Step 0 — The interface and the formulas
 
-- [ ] `decide/schema.py`: pydantic models for the request (`state`,
+- [x] `decide/schema.py`: pydantic models for the request (`state`,
       `questions` of three types with the documented limits: 255 options,
       2 to 10 levels) and the response.
 - [ ] `decide/derive.py`: `confidence` and `score` from a probability
