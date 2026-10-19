@@ -343,7 +343,7 @@ accepts without patching the model; the pointer head reads
       softmax over the label-token logits. This is the zero-training baseline
       every later step is compared against, and the first thing to run on the
       9B.
-- [ ] A calibration module: Brier, log loss, ECE with equal-width and
+- [x] A calibration module: Brier, log loss, ECE with equal-width and
       equal-mass bins, a reliability diagram, a **noise floor** (the ECE a
       perfectly calibrated model would show on the same predicted
       distributions, by resampling), and **coverage at a fixed error budget**
