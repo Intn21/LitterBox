@@ -4,6 +4,16 @@ See ``docs/decision-model.md`` for what this is and the roadmap for building
 it, and ``demo/decide/decision_model.ipynb`` for the mechanism traced by hand.
 """
 
+from litterbox.decide.calibration import (
+    aurc,
+    brier,
+    coverage_at,
+    ece,
+    ece_noise_floor,
+    log_loss,
+    reliability,
+    summarize,
+)
 from litterbox.decide.derive import (
     answer,
     confidence_choice,
@@ -39,11 +49,19 @@ __all__ = [
     "ScoreQuestion",
     "Usage",
     "answer",
+    "aurc",
+    "brier",
     "confidence_choice",
     "confidence_score",
+    "coverage_at",
     "decide",
+    "ece",
+    "ece_noise_floor",
     "hf_logits",
+    "log_loss",
+    "reliability",
     "render",
     "respond",
     "score_value",
+    "summarize",
 ]
