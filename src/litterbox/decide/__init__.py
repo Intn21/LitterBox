@@ -11,6 +11,7 @@ from litterbox.decide.derive import (
     respond,
     score_value,
 )
+from litterbox.decide.readout import decide, hf_logits, render
 from litterbox.decide.schema import (
     Answer,
     ChoiceAnswer,
@@ -40,6 +41,9 @@ __all__ = [
     "answer",
     "confidence_choice",
     "confidence_score",
+    "decide",
+    "hf_logits",
+    "render",
     "respond",
     "score_value",
 ]
