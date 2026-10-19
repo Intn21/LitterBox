@@ -336,7 +336,7 @@ accepts without patching the model; the pointer head reads
 - [x] `decide/schema.py`: pydantic models for the request (`state`,
       `questions` of three types with the documented limits: 255 options,
       2 to 10 levels) and the response.
-- [ ] `decide/derive.py`: `confidence` and `score` from a probability
+- [x] `decide/derive.py`: `confidence` and `score` from a probability
       vector, matching the documented formulas and worked examples.
 - [ ] `decide/readout.py`, baseline form: given any causal LM and a request,
       render the prompt with `A=`, `B=`, `C=` labels, run one forward pass,

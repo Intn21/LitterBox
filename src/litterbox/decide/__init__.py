@@ -4,6 +4,13 @@ See ``docs/decision-model.md`` for what this is and the roadmap for building
 it, and ``demo/decide/decision_model.ipynb`` for the mechanism traced by hand.
 """
 
+from litterbox.decide.derive import (
+    answer,
+    confidence_choice,
+    confidence_score,
+    respond,
+    score_value,
+)
 from litterbox.decide.schema import (
     Answer,
     ChoiceAnswer,
@@ -30,4 +37,9 @@ __all__ = [
     "ScoreAnswer",
     "ScoreQuestion",
     "Usage",
+    "answer",
+    "confidence_choice",
+    "confidence_score",
+    "respond",
+    "score_value",
 ]
