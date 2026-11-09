@@ -358,6 +358,13 @@ accepts without patching the model; the pointer head reads
 > readout answers a request on the 9B, on a pod, and its zero-shot accuracy
 > and ECE on one public set are recorded.
 
+**Met, 2026-11-09.** Qwen3.5-9B through the label-token readout on BoolQ's
+3,270 validation items: accuracy 0.868, ECE 0.012 against a noise floor of
+0.010, coverage 0.595 at 5% error. The untouched chat model is already honest
+on a two-option in-distribution question, which the hypothesis had predicted
+it would not be; see `experiments/2026-11-09-zero-shot-qwen3.5-9b-boolq/`.
+That is the baseline every later step is compared against.
+
 ### Step 1 — The data
 
 - [ ] A rule-generated typed-decision corpus: templated support tickets, log
