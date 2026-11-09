@@ -57,7 +57,10 @@ PREAMBLE = (
     "Answer with the single letter of the best option."
 )
 
-Logits = Callable[[Tensor], Tensor]  # ids [batch, seq] -> logits [batch, seq, vocab]
+# ids [batch, seq] and each row's answer position [batch] -> logits at those positions
+# [batch, vocab]. Only the answer positions are needed, and a full [batch, seq, vocab]
+# tensor over a 150k vocabulary is gigabytes per batch, so the adapters below gather first.
+Logits = Callable[[Tensor, Tensor], Tensor]
 
 
 # --- rendering ------------------------------------------------------------------
@@ -77,12 +80,16 @@ def options_of(question: NoulQuestion | ChoiceQuestion | ScoreQuestion) -> list[
     return [("no", _text(crit.get("false", ""))), ("yes", _text(crit.get("true", "")))]
 
 
-def render(request: Request, qid: str, order: Sequence[int] | None = None) -> str:
+def render(
+    request: Request, qid: str, order: Sequence[int] | None = None, *, answer_line: bool = True
+) -> str:
     """The prompt for one question of ``request``.
 
     ``order`` lists the options by index in the order to show them, for
     measuring order bias; the default is the request's order. The prompt ends
-    on ``Answer:`` so the next token is the letter.
+    on ``Answer:`` so the next token is the letter; a chat wrapper passes
+    ``answer_line=False`` and supplies that line itself, inside the assistant
+    turn (see :func:`chat_wrap`).
     """
     question = request.questions[qid]
     options = options_of(question)
@@ -104,8 +111,34 @@ def render(request: Request, qid: str, order: Sequence[int] | None = None) -> st
     for letter, j in zip(ALPHABET, order, strict=False):
         name, desc = options[j]
         lines.append(f"{letter} = {name}: {desc}" if desc else f"{letter} = {name}")
-    lines.append("Answer:")
+    if answer_line:
+        lines.append("Answer:")
     return "\n".join(lines)
+
+
+Wrap = Callable[[str], str]  # prompt without its Answer: line -> the text the model sees
+
+
+def chat_wrap(hf_tokenizer, **template_kwargs) -> Wrap:
+    """A :data:`Wrap` that frames the prompt as a chat turn and opens the answer.
+
+    Chat checkpoints answer worse outside their template. The prompt becomes
+    the user message, the assistant turn is opened, and ``Answer:`` is written
+    as the start of the assistant's reply, so the next token is the spaced
+    letter exactly as in the bare prompt. ``template_kwargs`` reach
+    ``apply_chat_template``: Qwen3-family models take ``enable_thinking=False``.
+    """
+
+    def wrap(prompt: str) -> str:
+        framed = hf_tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+            **template_kwargs,
+        )
+        return framed + "Answer:"
+
+    return wrap
 
 
 # --- tokens ---------------------------------------------------------------------
@@ -149,46 +182,73 @@ def encode_prompts(
 
 
 @torch.no_grad()
+def batched_probabilities(
+    logits_fn: Logits,
+    tokenizer: Tokenizer,
+    prompts: Sequence[str],
+    widths: Sequence[int],
+    *,
+    batch_size: int = 16,
+    device: torch.device | str | None = None,
+) -> tuple[list[list[float]], int]:
+    """One probability vector per prompt, over that prompt's first ``widths[i]`` labels.
+
+    This is the readout proper, independent of the request schema, so that a
+    dataset of many states can be run as one stream of prompts. Returns the
+    vectors and the total number of prompt tokens.
+    """
+    labels = torch.tensor(label_ids(tokenizer, max(widths)))
+    out: list[list[float]] = []
+    total_tokens = 0
+    for start in range(0, len(prompts), batch_size):
+        chunk = slice(start, start + batch_size)
+        ids, last = encode_prompts(tokenizer, prompts[chunk])
+        total_tokens += int(last.sum()) + len(last)
+        if device is not None:
+            ids = ids.to(device)
+        at_last = logits_fn(ids, last.to(ids.device))  # [b, vocab], at each prompt's Answer:
+        scores = at_last[:, labels.to(at_last.device)].float().cpu()  # [b, max_width]
+        for row, k in zip(scores, widths[chunk], strict=True):
+            out.append(row[:k].softmax(0).tolist())  # only this prompt's k labels exist
+    return out, total_tokens
+
+
 def probabilities(
     logits_fn: Logits,
     tokenizer: Tokenizer,
     request: Request,
     *,
     orders: dict[str, Sequence[int]] | None = None,
+    wrap: Wrap | None = None,
     batch_size: int = 16,
     device: torch.device | str | None = None,
 ) -> tuple[dict[str, list[float]], int]:
     """One probability vector per question id, and the total prompt tokens.
 
     Each vector is in the request's option order, whatever ``orders`` showed
-    the model, so that callers never see the permutation.
+    the model, so that callers never see the permutation. ``wrap`` frames each
+    prompt for a chat model (:func:`chat_wrap`); without it the bare prompt is
+    used.
     """
     orders = orders or {}
     qids = list(request.questions)
-    prompts = [render(request, qid, orders.get(qid)) for qid in qids]
+    if wrap is None:
+        prompts = [render(request, qid, orders.get(qid)) for qid in qids]
+    else:
+        prompts = [wrap(render(request, qid, orders.get(qid), answer_line=False)) for qid in qids]
     widths = [len(options_of(request.questions[qid])) for qid in qids]
-    labels = torch.tensor(label_ids(tokenizer, max(widths)))
-
+    rows, total_tokens = batched_probabilities(
+        logits_fn, tokenizer, prompts, widths, batch_size=batch_size, device=device
+    )
     out: dict[str, list[float]] = {}
-    total_tokens = 0
-    for start in range(0, len(qids), batch_size):
-        chunk = slice(start, start + batch_size)
-        ids, last = encode_prompts(tokenizer, prompts[chunk])
-        total_tokens += int(last.sum()) + len(last)
-        if device is not None:
-            ids = ids.to(device)
-        logits = logits_fn(ids)  # [b, seq, vocab]
-        at_last = logits[torch.arange(len(last)), last.to(logits.device)]  # [b, vocab]
-        scores = at_last[:, labels.to(logits.device)].float().cpu()  # [b, max_width]
-        for row, qid, k in zip(scores, qids[chunk], widths[chunk], strict=True):
-            p = row[:k].softmax(0).tolist()  # only this question's k labels exist
-            shown = orders.get(qid)
-            if shown is not None:  # map back from the shown order to the request's
-                unshuffled = [0.0] * k
-                for slot, j in enumerate(shown):
-                    unshuffled[j] = p[slot]
-                p = unshuffled
-            out[qid] = p
+    for qid, p in zip(qids, rows, strict=True):
+        shown = orders.get(qid)
+        if shown is not None:  # map back from the shown order to the request's
+            unshuffled = [0.0] * len(p)
+            for slot, j in enumerate(shown):
+                unshuffled[j] = p[slot]
+            p = unshuffled
+        out[qid] = p
     return out, total_tokens
 
 
@@ -205,16 +265,32 @@ def decide(
     return respond(request, probs, model=model_name, input_tokens=tokens)
 
 
+def full_logits(model) -> Logits:
+    """Adapt a model that returns logits for every position, like the repo's backbone."""
+
+    def fn(ids: Tensor, last: Tensor) -> Tensor:
+        logits = model(ids)  # [b, seq, vocab]
+        return logits[torch.arange(len(last), device=logits.device), last.to(logits.device)]
+
+    return fn
+
+
 def hf_logits(model) -> Logits:
-    """Wrap a ``transformers`` causal LM as a ``Logits`` function.
+    """Adapt a ``transformers`` causal LM, applying its output head only at the answer positions.
 
-    Passes an attention mask that marks nothing as padding, since the padding
-    is on the right and never read; what matters is that the model sees plain
-    positions ``0..n-1`` for every row.
+    The base model's hidden states are gathered at ``last`` before the output
+    embedding is applied, so memory scales with the hidden size rather than
+    the vocabulary. The attention mask marks nothing as padding: padding is on
+    the right and never read, and every row sees plain positions ``0..n-1``.
     """
+    base = model.get_decoder() if hasattr(model, "get_decoder") else model.model
+    head = model.get_output_embeddings()
 
-    def fn(ids: Tensor) -> Tensor:
-        ids = ids.to(next(model.parameters()).device)
-        return model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits
+    def fn(ids: Tensor, last: Tensor) -> Tensor:
+        device = next(model.parameters()).device
+        ids = ids.to(device)
+        hidden = base(input_ids=ids, attention_mask=torch.ones_like(ids)).last_hidden_state
+        at_last = hidden[torch.arange(len(last), device=device), last.to(device)]  # [b, d]
+        return head(at_last)  # [b, vocab]
 
     return fn
