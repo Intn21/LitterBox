@@ -2,7 +2,7 @@
 
 Run it::
 
-    python examples/tokenizers.py
+    python examples/compare_tokenizers.py
 
 Everything degrades gracefully: with nothing optional installed you still get
 the byte and char backends. ``pip install -e ".[tokenizers]"`` adds GPT-2/4/4o
