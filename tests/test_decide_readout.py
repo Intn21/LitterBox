@@ -18,10 +18,13 @@ from litterbox.decide import Request
 from litterbox.decide.readout import (
     ALPHABET,
     PREAMBLE,
+    batched_probabilities,
+    chat_wrap,
     decide,
     encode_prompts,
     hf_logits,
     label_ids,
+    options_of,
     probabilities,
     render,
 )
@@ -276,3 +279,37 @@ def test_hf_logits_wraps_a_transformers_style_model():
 
     probs, _ = probabilities(hf_logits(Fake()), TOK, REQUEST)
     assert probs["dept"].index(max(probs["dept"])) == 2
+
+
+# --- chat framing and the prompt stream -----------------------------------------------------
+
+
+def test_render_can_leave_the_answer_line_for_a_wrapper():
+    bare = render(REQUEST, "dept", answer_line=False)
+    assert not bare.endswith("Answer:") and bare.endswith("C = other")
+    assert render(REQUEST, "dept") == bare + "\nAnswer:"
+
+
+def test_chat_wrap_frames_the_prompt_and_opens_the_answer():
+    class FakeChatTokenizer:
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kw):
+            assert tokenize is False and add_generation_prompt is True
+            assert kw == {"enable_thinking": False}
+            return f"<user>{messages[0]['content']}</user><assistant>"
+
+    wrap = chat_wrap(FakeChatTokenizer(), enable_thinking=False)
+    assert wrap("prompt") == "<user>prompt</user><assistant>Answer:"
+    # through the readout: the model still sees Answer: last, so the letters' logits are read
+    probs, _ = probabilities(favour(["B", "A", "A"]), TOK, REQUEST, wrap=wrap)
+    assert probs["dept"].index(max(probs["dept"])) == 1
+
+
+def test_batched_probabilities_is_what_probabilities_uses(tiny):
+    qids = list(REQUEST.questions)
+    prompts = [render(REQUEST, q) for q in qids]
+    widths = [len(options_of(REQUEST.questions[q])) for q in qids]
+    rows, tokens = batched_probabilities(tiny, TOK, prompts, widths, batch_size=2)
+    via_request, tokens2 = probabilities(tiny, TOK, REQUEST, batch_size=2)
+    assert tokens == tokens2
+    for q, row in zip(qids, rows, strict=True):
+        assert row == pytest.approx(via_request[q], abs=1e-6)

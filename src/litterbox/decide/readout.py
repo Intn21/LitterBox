@@ -77,12 +77,16 @@ def options_of(question: NoulQuestion | ChoiceQuestion | ScoreQuestion) -> list[
     return [("no", _text(crit.get("false", ""))), ("yes", _text(crit.get("true", "")))]
 
 
-def render(request: Request, qid: str, order: Sequence[int] | None = None) -> str:
+def render(
+    request: Request, qid: str, order: Sequence[int] | None = None, *, answer_line: bool = True
+) -> str:
     """The prompt for one question of ``request``.
 
     ``order`` lists the options by index in the order to show them, for
     measuring order bias; the default is the request's order. The prompt ends
-    on ``Answer:`` so the next token is the letter.
+    on ``Answer:`` so the next token is the letter; a chat wrapper passes
+    ``answer_line=False`` and supplies that line itself, inside the assistant
+    turn (see :func:`chat_wrap`).
     """
     question = request.questions[qid]
     options = options_of(question)
@@ -104,8 +108,34 @@ def render(request: Request, qid: str, order: Sequence[int] | None = None) -> st
     for letter, j in zip(ALPHABET, order, strict=False):
         name, desc = options[j]
         lines.append(f"{letter} = {name}: {desc}" if desc else f"{letter} = {name}")
-    lines.append("Answer:")
+    if answer_line:
+        lines.append("Answer:")
     return "\n".join(lines)
+
+
+Wrap = Callable[[str], str]  # prompt without its Answer: line -> the text the model sees
+
+
+def chat_wrap(hf_tokenizer, **template_kwargs) -> Wrap:
+    """A :data:`Wrap` that frames the prompt as a chat turn and opens the answer.
+
+    Chat checkpoints answer worse outside their template. The prompt becomes
+    the user message, the assistant turn is opened, and ``Answer:`` is written
+    as the start of the assistant's reply, so the next token is the spaced
+    letter exactly as in the bare prompt. ``template_kwargs`` reach
+    ``apply_chat_template``: Qwen3-family models take ``enable_thinking=False``.
+    """
+
+    def wrap(prompt: str) -> str:
+        framed = hf_tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+            **template_kwargs,
+        )
+        return framed + "Answer:"
+
+    return wrap
 
 
 # --- tokens ---------------------------------------------------------------------
@@ -149,29 +179,25 @@ def encode_prompts(
 
 
 @torch.no_grad()
-def probabilities(
+def batched_probabilities(
     logits_fn: Logits,
     tokenizer: Tokenizer,
-    request: Request,
+    prompts: Sequence[str],
+    widths: Sequence[int],
     *,
-    orders: dict[str, Sequence[int]] | None = None,
     batch_size: int = 16,
     device: torch.device | str | None = None,
-) -> tuple[dict[str, list[float]], int]:
-    """One probability vector per question id, and the total prompt tokens.
+) -> tuple[list[list[float]], int]:
+    """One probability vector per prompt, over that prompt's first ``widths[i]`` labels.
 
-    Each vector is in the request's option order, whatever ``orders`` showed
-    the model, so that callers never see the permutation.
+    This is the readout proper, independent of the request schema, so that a
+    dataset of many states can be run as one stream of prompts. Returns the
+    vectors and the total number of prompt tokens.
     """
-    orders = orders or {}
-    qids = list(request.questions)
-    prompts = [render(request, qid, orders.get(qid)) for qid in qids]
-    widths = [len(options_of(request.questions[qid])) for qid in qids]
     labels = torch.tensor(label_ids(tokenizer, max(widths)))
-
-    out: dict[str, list[float]] = {}
+    out: list[list[float]] = []
     total_tokens = 0
-    for start in range(0, len(qids), batch_size):
+    for start in range(0, len(prompts), batch_size):
         chunk = slice(start, start + batch_size)
         ids, last = encode_prompts(tokenizer, prompts[chunk])
         total_tokens += int(last.sum()) + len(last)
@@ -180,15 +206,47 @@ def probabilities(
         logits = logits_fn(ids)  # [b, seq, vocab]
         at_last = logits[torch.arange(len(last)), last.to(logits.device)]  # [b, vocab]
         scores = at_last[:, labels.to(logits.device)].float().cpu()  # [b, max_width]
-        for row, qid, k in zip(scores, qids[chunk], widths[chunk], strict=True):
-            p = row[:k].softmax(0).tolist()  # only this question's k labels exist
-            shown = orders.get(qid)
-            if shown is not None:  # map back from the shown order to the request's
-                unshuffled = [0.0] * k
-                for slot, j in enumerate(shown):
-                    unshuffled[j] = p[slot]
-                p = unshuffled
-            out[qid] = p
+        for row, k in zip(scores, widths[chunk], strict=True):
+            out.append(row[:k].softmax(0).tolist())  # only this prompt's k labels exist
+    return out, total_tokens
+
+
+def probabilities(
+    logits_fn: Logits,
+    tokenizer: Tokenizer,
+    request: Request,
+    *,
+    orders: dict[str, Sequence[int]] | None = None,
+    wrap: Wrap | None = None,
+    batch_size: int = 16,
+    device: torch.device | str | None = None,
+) -> tuple[dict[str, list[float]], int]:
+    """One probability vector per question id, and the total prompt tokens.
+
+    Each vector is in the request's option order, whatever ``orders`` showed
+    the model, so that callers never see the permutation. ``wrap`` frames each
+    prompt for a chat model (:func:`chat_wrap`); without it the bare prompt is
+    used.
+    """
+    orders = orders or {}
+    qids = list(request.questions)
+    if wrap is None:
+        prompts = [render(request, qid, orders.get(qid)) for qid in qids]
+    else:
+        prompts = [wrap(render(request, qid, orders.get(qid), answer_line=False)) for qid in qids]
+    widths = [len(options_of(request.questions[qid])) for qid in qids]
+    rows, total_tokens = batched_probabilities(
+        logits_fn, tokenizer, prompts, widths, batch_size=batch_size, device=device
+    )
+    out: dict[str, list[float]] = {}
+    for qid, p in zip(qids, rows, strict=True):
+        shown = orders.get(qid)
+        if shown is not None:  # map back from the shown order to the request's
+            unshuffled = [0.0] * len(p)
+            for slot, j in enumerate(shown):
+                unshuffled[j] = p[slot]
+            p = unshuffled
+        out[qid] = p
     return out, total_tokens
 
 

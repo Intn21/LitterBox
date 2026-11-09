@@ -1,0 +1,10 @@
+# Resolved arguments of examples/decide_zero_shot.py for this run.
+model: Qwen/Qwen3.5-9B
+dataset: google/boolq
+split: validation
+limit: null          # all 3,270 items
+chat_template: true  # user turn, assistant turn opened, "Answer:" as the reply's start
+enable_thinking: false
+batch_size: 16
+dtype: bfloat16
+readout: label tokens (A = no, B = yes), spaced form
