@@ -57,7 +57,10 @@ PREAMBLE = (
     "Answer with the single letter of the best option."
 )
 
-Logits = Callable[[Tensor], Tensor]  # ids [batch, seq] -> logits [batch, seq, vocab]
+# ids [batch, seq] and each row's answer position [batch] -> logits at those positions
+# [batch, vocab]. Only the answer positions are needed, and a full [batch, seq, vocab]
+# tensor over a 150k vocabulary is gigabytes per batch, so the adapters below gather first.
+Logits = Callable[[Tensor, Tensor], Tensor]
 
 
 # --- rendering ------------------------------------------------------------------
@@ -203,9 +206,8 @@ def batched_probabilities(
         total_tokens += int(last.sum()) + len(last)
         if device is not None:
             ids = ids.to(device)
-        logits = logits_fn(ids)  # [b, seq, vocab]
-        at_last = logits[torch.arange(len(last)), last.to(logits.device)]  # [b, vocab]
-        scores = at_last[:, labels.to(logits.device)].float().cpu()  # [b, max_width]
+        at_last = logits_fn(ids, last.to(ids.device))  # [b, vocab], at each prompt's Answer:
+        scores = at_last[:, labels.to(at_last.device)].float().cpu()  # [b, max_width]
         for row, k in zip(scores, widths[chunk], strict=True):
             out.append(row[:k].softmax(0).tolist())  # only this prompt's k labels exist
     return out, total_tokens
@@ -263,16 +265,32 @@ def decide(
     return respond(request, probs, model=model_name, input_tokens=tokens)
 
 
+def full_logits(model) -> Logits:
+    """Adapt a model that returns logits for every position, like the repo's backbone."""
+
+    def fn(ids: Tensor, last: Tensor) -> Tensor:
+        logits = model(ids)  # [b, seq, vocab]
+        return logits[torch.arange(len(last), device=logits.device), last.to(logits.device)]
+
+    return fn
+
+
 def hf_logits(model) -> Logits:
-    """Wrap a ``transformers`` causal LM as a ``Logits`` function.
+    """Adapt a ``transformers`` causal LM, applying its output head only at the answer positions.
 
-    Passes an attention mask that marks nothing as padding, since the padding
-    is on the right and never read; what matters is that the model sees plain
-    positions ``0..n-1`` for every row.
+    The base model's hidden states are gathered at ``last`` before the output
+    embedding is applied, so memory scales with the hidden size rather than
+    the vocabulary. The attention mask marks nothing as padding: padding is on
+    the right and never read, and every row sees plain positions ``0..n-1``.
     """
+    base = model.get_decoder() if hasattr(model, "get_decoder") else model.model
+    head = model.get_output_embeddings()
 
-    def fn(ids: Tensor) -> Tensor:
-        ids = ids.to(next(model.parameters()).device)
-        return model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits
+    def fn(ids: Tensor, last: Tensor) -> Tensor:
+        device = next(model.parameters()).device
+        ids = ids.to(device)
+        hidden = base(input_ids=ids, attention_mask=torch.ones_like(ids)).last_hidden_state
+        at_last = hidden[torch.arange(len(last), device=device), last.to(device)]  # [b, d]
+        return head(at_last)  # [b, vocab]
 
     return fn

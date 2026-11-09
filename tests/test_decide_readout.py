@@ -22,6 +22,7 @@ from litterbox.decide.readout import (
     chat_wrap,
     decide,
     encode_prompts,
+    full_logits,
     hf_logits,
     label_ids,
     options_of,
@@ -65,10 +66,10 @@ LABEL = {c: TOK.encode(c)[0] for c in ALPHABET}
 def favour(letters_by_prompt):
     """A ``logits_fn`` that puts a big logit on one letter per prompt, at the last position."""
 
-    def fn(ids):
-        logits = torch.zeros(ids.shape[0], ids.shape[1], TOK.vocab_size)
+    def fn(ids, last):
+        logits = torch.zeros(ids.shape[0], TOK.vocab_size)
         for i, letter in enumerate(letters_by_prompt):
-            logits[i, :, LABEL[letter]] = 5.0
+            logits[i, LABEL[letter]] = 5.0
         return logits
 
     return fn
@@ -219,9 +220,8 @@ def test_a_shown_order_is_mapped_back_to_the_requests_order():
 @pytest.fixture(scope="module")
 def tiny():
     torch.manual_seed(0)
-    return dense_transformer(
-        TOK.vocab_size, d_model=32, n_layers=2, heads=2, max_seq_len=1024
-    ).eval()
+    model = dense_transformer(TOK.vocab_size, d_model=32, n_layers=2, heads=2, max_seq_len=1024)
+    return full_logits(model.eval())
 
 
 def test_decide_on_the_repo_backbone_returns_a_checked_response(tiny):
@@ -266,19 +266,28 @@ def test_schema_closure_holds_for_random_requests_on_a_random_model(tiny):
 
 
 def test_hf_logits_wraps_a_transformers_style_model():
+    class FakeBase(torch.nn.Module):
+        def forward(self, input_ids, attention_mask):
+            assert attention_mask.shape == input_ids.shape and bool(attention_mask.all())
+            hidden = torch.zeros(*input_ids.shape, 4)
+            hidden[..., 0] = 1.0  # a constant hidden state; the head below turns it into letter C
+            return type("Out", (), {"last_hidden_state": hidden})()
+
     class Fake(torch.nn.Module):
         def __init__(self):
             super().__init__()
-            self.w = torch.nn.Parameter(torch.zeros(1))
+            self.model = FakeBase()
+            self.head = torch.nn.Linear(4, TOK.vocab_size, bias=False)
+            with torch.no_grad():
+                self.head.weight.zero_()
+                self.head.weight[LABEL["C"], 0] = 3.0
 
-        def forward(self, input_ids, attention_mask):
-            assert attention_mask.shape == input_ids.shape and bool(attention_mask.all())
-            out = torch.zeros(*input_ids.shape, TOK.vocab_size)
-            out[..., LABEL["C"]] = 3.0
-            return type("Out", (), {"logits": out})()
+        def get_output_embeddings(self):
+            return self.head
 
     probs, _ = probabilities(hf_logits(Fake()), TOK, REQUEST)
     assert probs["dept"].index(max(probs["dept"])) == 2
+    assert probs["angry"] == pytest.approx([0.5, 0.5])  # C does not exist for a two-option question
 
 
 # --- chat framing and the prompt stream -----------------------------------------------------
