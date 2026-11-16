@@ -367,7 +367,7 @@ That is the baseline every later step is compared against.
 
 ### Step 1 — The data
 
-- [ ] A rule-generated typed-decision corpus: templated support tickets, log
+- [x] A rule-generated typed-decision corpus: templated support tickets, log
       lines and JSON records with known labels for queue (choice), urgency
       (score), and a handful of boolean properties (noul). Rule-generated
       means we set the label frequencies: "charged twice" is billing 60% of

@@ -74,6 +74,8 @@ tokenizers = [
 [project.scripts]
 # Tokenize a corpus into packed shards from a data config: litterbox-pack configs/data/<name>.yaml
 litterbox-pack = "litterbox.data.prepare:main"
+# Generate a decision-model corpus with known label frequencies: litterbox-decide-data --domain tickets --out data/decide/tickets
+litterbox-decide-data = "litterbox.decide.data.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Intn21/LitterBox"
