@@ -278,7 +278,11 @@ was built to test.
 
 Revised 2026-10-05, twice. After the dissent pass the readout became listwise
 (a decision position that sees the whole option list) and the headline
-calibration metric became coverage at a fixed error budget. Then the backbone
+calibration metric became coverage at a fixed error budget. Then, on 2026-11-16, a survey of what
+had been published since found the public data already converted and the
+experiment already run by others, which shortens step 1 and gives step 3 a
+known answer to check against; the repo exists to learn the mechanism and keep
+the tools on hand, so the plan stands. Before that the backbone
 decision was made: **the model is built on a strong open checkpoint, fully
 fine-tuned, not adapted with LoRA and not on the TinyStories backbone.** Our own backbone is used only to run the mechanics
 tests in seconds on the Mac.
@@ -374,18 +378,28 @@ That is the baseline every later step is compared against.
       the time by construction, so the honest answer is known. A deliberately
       *unrecoverable* variant, where the label depends on a policy absent
       from the state, tests whether the model reports a flat distribution.
-- [ ] Public sets through the existing data configs: Banking77 (77-way
-      choice), BoolQ (noul), SST-5 and HelpSteer2 (score), ChaosNLI for
-      multi-annotator soft labels, and the `typed-decisions` set for the
-      headline comparison. A manifest with source and license, like
-      Jebadiah's.
-- [ ] Augmentation at pack time: shuffle option order, shuffle JSON keys,
-      paraphrase instructions, so position is not learnable.
+- [x] Public data through one adapter. A survey on 2026-11-16 found the
+      conversion already done: `tasksource/tasksource-jev-typed-decisions`
+      recasts about 750 public datasets as typed decisions, with source
+      labels, a license class per row and a group id. `decide/data/tasksource.py`
+      maps its rows onto our record format, turns soft targets (13% of rows,
+      annotator vote shares) into a `truth`, drops the sources that feed our
+      evaluation sets, and carves a calibration slice by group. The manifest
+      records the pinned revision, per-source counts, license classes, what
+      was skipped and why, and any group shared between splits.
+- [ ] Evaluation-only sets, never trained on, through small adapters of the
+      same kind: `LocalLLaMA/typed-decisions` (test split, the most-used
+      leaderboard), `Praveenrajus/jev-bench` (22 sources with human label
+      distributions; its sources are the adapter's default exclusion list),
+      and `jgeuter/OpenDecisions`.
+- [ ] Augmentation at load time for the public data: shuffle option order
+      per epoch, as the generator already does at generation time.
 
-> **Condition.** Records exist as JSONL in a documented schema with a held-out
-> split for every source; the TF-IDF + logistic-regression baseline and the
-> step-0 label-token baseline on the 9B are both run on it and recorded in
-> `experiments/`.
+> **Condition.** Records exist as JSONL in one documented schema for the
+> generated corpora, the tasksource training mix and the evaluation-only
+> sets, with no group shared between a training and an evaluation split; the
+> TF-IDF + logistic-regression baseline and the step-0 label-token baseline on
+> the 9B are both run on the evaluation sets and recorded in `experiments/`.
 
 ### Step 2 — The listwise readout, mechanics first
 
@@ -441,7 +455,8 @@ The token layout, following Kev and Strands Decider:
       fall.
 
 > **Condition.** Beats the TF-IDF baseline on `typed-decisions`, lands within
-> a few points of Jebadiah 9B (73.9%) with ECE under 0.05, the pointer head
+> a few points of Jebadiah 9B (73.9%) with ECE under 0.05, and near the
+> fine-tuned Qwen3.5-9B that jev-bench reports (0.763 accuracy, ECE 0.056), the pointer head
 > beats label tokens on Banking77 where 77 options is where single tokens
 > strain, fewer than 2% order flips concentrated in low-confidence items, and
 > coverage at 5% error reported next to Kev-9B and Jev. Run recorded in

@@ -9,9 +9,13 @@ question lists them: an option for a ``choice``, a level for a ``score``, and
 0 = no / 1 = yes for a ``noul``. Training reads this and nothing below it.
 
 ``truth`` is the distribution each label was drawn from, in the same order,
-and ``region`` names the rule that set it as ``kind/name``. Only generated
-data has them: they are the answer key, read by evaluation and never by
-training. Public datasets leave both out.
+and ``region`` names the rule that set it as ``kind/name``. Generated data has
+both: they are the answer key, read by evaluation and never by training.
+Public data has no region, and has a truth only where the source recorded how
+its annotators split.
+
+``group`` ties together records that must not be separated by a split: the
+same state asked several questions, or paraphrases of one item.
 """
 
 from __future__ import annotations
@@ -50,6 +54,8 @@ class Record(BaseModel):
     labels: dict[str, int]
     truth: dict[str, list[float]] | None = None
     region: dict[str, str] | None = None
+    group: str | None = None  # records sharing a group must stay in one split
+    license: str | None = None  # the source's usage class, where the source states one
 
     @model_validator(mode="after")
     def _consistent(self) -> Record:
