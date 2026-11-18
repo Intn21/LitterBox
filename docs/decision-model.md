@@ -1,5 +1,7 @@
 # Decision models, and a roadmap for building one here
 
+> For the current state in one page, read [decision-model-status.md](decision-model-status.md).
+
 Research note, 2026-10-05. Part 1 is what Jev is and how it works, separating
 what TypeSafe has said from what the open reproductions have shown. Part 2 is a
 draft roadmap for our own, in the style of [ROADMAP.md](../ROADMAP.md): steps
@@ -402,6 +404,13 @@ That is the baseline every later step is compared against.
 > the 9B are both run on the evaluation sets and recorded in `experiments/`.
 
 ### Step 2 — The listwise readout, mechanics first
+
+> **Note, 2026-11-18.** Qwen3.5-9B is a hybrid: 24 of its 32 layers are linear
+> attention and 8 are full attention. An attention mask cannot isolate
+> questions in the linear layers, whose state runs through every token. The
+> block-mask item below holds for a pure-attention model such as the toy one,
+> but on the 9B isolation has to come from a shared state prefix with one
+> continuation per question. See the status page; the item is to be revised.
 
 The token layout, following Kev and Strands Decider:
 
